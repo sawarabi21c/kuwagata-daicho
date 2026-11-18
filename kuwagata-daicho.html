@@ -78,6 +78,7 @@ h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(26px, 5vw
 .stage-cell .label { font-size: 12px; color: var(--muted); letter-spacing: .08em; }
 .stage-cell .value { font-family: var(--f-data); font-size: 26px; font-weight: 600; line-height: 1.1; }
 .stage-cell .value small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.stage-cell .sexcount { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 8px; letter-spacing: 0; white-space: nowrap; display: inline-block; }
 .due { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
 .due h2, .section-title { font-size: 13px; letter-spacing: .1em; color: var(--muted); margin: 0; font-weight: 700; }
 .due ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -1205,7 +1206,7 @@ function renderMasters() {
       ${(state.masters.species || []).length ? `<ul class="master-list">${state.masters.species.map(sp => `<li><span>${esc(sp)}</span><span class="unit days" data-unit="日" style="max-width:8em"><input type="number" min="0" step="1" inputmode="numeric" data-harvestdays="${esc(sp)}" value="${esc((state.masters.harvestDays || {})[sp] ?? "")}" aria-label="${esc(sp)}の割り出しまでの日数"></span></li>`).join("")}</ul>` : '<p class="hint">先に「クワガタの種類」を登録してください。</p>'}
     </section>
     <section class="box master">
-      <div><h3 class="section-title">「◯mm超え」の基準（種類ごと）</h3><p class="hint">「ラインの成績」と出品文の「同腹兄弟の羽化実績」で、♂がこの大きさを超えた頭数を数えます。空欄の種類は数えません（タランドゥスは空欄なら90mm）。</p></div>
+      <div><h3 class="section-title">「◯mm以上」の基準（種類ごと）</h3><p class="hint">「ラインの成績」と出品文の「同腹兄弟の羽化実績」で、♂がこの大きさ以上（ちょうども含む）の頭数を数えます。空欄の種類は数えません（タランドゥスは空欄なら90mm）。</p></div>
       ${(state.masters.species || []).length ? `<ul class="master-list">${state.masters.species.map(sp => `<li><span>${esc(sp)}</span><span class="unit" data-unit="mm" style="max-width:8em"><input type="number" min="0" step="0.1" inputmode="decimal" data-threshold="${esc(sp)}" value="${esc((state.masters.sizeThresholds || {})[sp] ?? "")}" placeholder="${esc(sizeThreshold(sp) ?? "")}" aria-label="${esc(sp)}の基準"></span></li>`).join("")}</ul>` : '<p class="hint">先に「クワガタの種類」を登録してください。</p>'}
     </section>
     <section class="box master" style="grid-column:1/-1">
@@ -1311,7 +1312,7 @@ const HIST_FILTERS = [
 ];
 
 /* ---------- ラインごとの成績（改善⑩） ---------- */
-// 「◯mm超え」の基準は種類ごと（種類の登録で決める）。決めていないタランドゥスは90mm
+// 「◯mm以上」の基準は種類ごと（種類の登録で決める。2026-11-19 から「超え」ではなく「以上」で、基準ちょうども数える）。決めていないタランドゥスは90mm
 const sizeThreshold = sp => {
   const v = (state.masters.sizeThresholds || {})[sp];
   if (v !== undefined && v !== null && v !== "") return Number(v) || null;
@@ -1327,7 +1328,7 @@ function lineStats(kids, species) {
     eclosed: kids.filter(b => b.eclosionDate || b.sizeMm || isAdult(b)).length,
     mN: m.length, mAvg: avgOf(m), mMax: m.length ? Math.max(...m) : null,
     fN: f.length, fAvg: avgOf(f), fMax: f.length ? Math.max(...f) : null,
-    th, over: th ? m.filter(x => x > th).length : null,
+    th, over: th ? m.filter(x => x >= th).length : null,
   };
 }
 const pct = (a, n) => n ? Math.round(a / n * 100) : 0;
@@ -1337,7 +1338,7 @@ function statsText(s) {
   return [`子${s.total}頭・羽化${s.eclosed}頭`,
     s.mN ? `♂${s.mN}頭 平均${s.mAvg}mm・最大${s.mMax}mm` : "",
     s.fN ? `♀${s.fN}頭 平均${s.fAvg}mm・最大${s.fMax}mm` : "",
-    s.th && s.mN ? `${s.th}mm超え ${s.over}頭（♂の${pct(s.over, s.mN)}％）` : ""].filter(Boolean).join(" ／ ");
+    s.th && s.mN ? `${s.th}mm以上 ${s.over}頭（♂の${pct(s.over, s.mN)}％）` : ""].filter(Boolean).join(" ／ ");
 }
 // 親の組（♂親×♀親の名前）ごとにまとめる
 function lineGroups() {
@@ -1370,17 +1371,17 @@ function renderLines() {
   v.innerHTML = `
     <div class="toolbar"><label class="row" style="color:var(--ink);font-size:14px;gap:6px">種別 <select id="lineSp" style="width:auto;max-width:60vw"><option value="">すべて</option>${sps.map(s => `<option value="${esc(s)}"${s === state.lineSp ? " selected" : ""}>${esc(s || "（種別なし）")}</option>`).join("")}</select></label></div>
     <div class="box" style="padding:0"><div class="tbl-wrap"><table class="tbl beetle-tbl">
-      <thead><tr><th class="pad">♂親 × ♀親</th><th class="pad">種別・累代</th><th class="pad r">子</th><th class="pad r">羽化</th><th class="pad r">♂平均</th><th class="pad r">♂最大</th><th class="pad r">◯mm超え</th><th class="pad r">♀平均</th><th class="pad r">♀最大</th></tr></thead>
+      <thead><tr><th class="pad">♂親 × ♀親</th><th class="pad">種別・累代</th><th class="pad r">子</th><th class="pad r">羽化</th><th class="pad r">♂平均</th><th class="pad r">♂最大</th><th class="pad r">◯mm以上</th><th class="pad r">♀平均</th><th class="pad r">♀最大</th></tr></thead>
       <tbody>${list.map(g => `<tr${g.pair ? ` data-pair-row="${esc(g.pair.id)}"` : ""}>
         <td><span class="sex m">♂</span> ${esc(g.father || "—")}${g.fSize ? ` <span class="num">${g.fSize}</span>` : ""} × <span class="sex f">♀</span> ${esc(g.mother || "—")}${g.mSize ? ` <span class="num">${g.mSize}</span>` : ""}${g.pair ? `<span class="hint" style="display:block">${esc(g.pair.name || "")}</span>` : ""}</td>
         <td>${esc(g.sp)}${g.line ? `<span class="hint" style="display:block">${esc(g.line)}</span>` : ""}</td>
         <td class="r">${n(g.s.total)}</td><td class="r">${n(g.s.eclosed)}</td>
         <td class="r">${n(g.s.mAvg)}</td><td class="r">${n(g.s.mMax)}</td>
-        <td class="r">${g.s.th && g.s.mN ? `<span class="num">${g.s.over}/${g.s.mN}</span><span class="hint" style="display:block">${g.s.th}mm超え ${pct(g.s.over, g.s.mN)}％</span>` : '<span class="hint">—</span>'}</td>
+        <td class="r">${g.s.th && g.s.mN ? `<span class="num">${g.s.over}/${g.s.mN}</span><span class="hint" style="display:block">${g.s.th}mm以上 ${pct(g.s.over, g.s.mN)}％</span>` : '<span class="hint">—</span>'}</td>
         <td class="r">${n(g.s.fAvg)}</td><td class="r">${n(g.s.fMax)}</td>
       </tr>`).join("") || `<tr><td colspan="9" class="hint">条件に合う組はありません。</td></tr>`}</tbody>
     </table></div></div>
-    <p class="hint">同じ♂親・♀親の名前を持つ個体を1つの組にまとめています。履歴に移した個体（販売・死亡など）も数えます。台帳から削除した個体は数えられません。サイズは単位mm、「◯mm超え」は♂のうち基準より大きい頭数です（基準ちょうどは数えません）。基準は「種類の登録」タブで種類ごとに変えられます。ペアが登録してある組は、行を押すとペアの画面が開きます。</p>`;
+    <p class="hint">同じ♂親・♀親の名前を持つ個体を1つの組にまとめています。履歴に移した個体（販売・死亡など）も数えます。台帳から削除した個体は数えられません。サイズは単位mm、「◯mm以上」は♂のうち基準と同じか大きい頭数です（基準ちょうども数えます）。基準は「種類の登録」タブで種類ごとに変えられます。ペアが登録してある組は、行を押すとペアの画面が開きます。</p>`;
 }
 
 /* ---------- 長く更新のない個体（改善④） ---------- */
@@ -1867,7 +1868,7 @@ function siblingText(list) {
   const kids = [b, ...siblings(b)];
   const s = lineStats(kids, b.species);
   if (!s.th || !s.mN) return "";
-  return `同腹兄弟の羽化実績は、オス${s.mN}頭中${s.over}頭が${s.th}mmを超えて羽化。\n${s.th}mm超えの割合は約${pct(s.over, s.mN)}％となっています。`;
+  return `同腹兄弟の羽化実績は、オス${s.mN}頭中${s.over}頭が${s.th}mm以上で羽化。\n${s.th}mm以上の割合は約${pct(s.over, s.mN)}％となっています。`;
 }
 function listingText(list, opt) {
   let t = listingTemplate()
@@ -1976,7 +1977,7 @@ function listingXText(list, opt) {
     "ヤフオクに出品しました！",
     [sizes, sp, kind, line].filter(Boolean).join(" "),
     [opt.newAdult ? "新成虫" : "", fs || ms ? `種親 ${fs ? "♂" + fs : ""}${fs && ms ? "×" : ""}${ms ? "♀" + ms : ""}` : ""].filter(Boolean).join("・"),
-    sib && sib.th && sib.mN ? `同腹♂は${sib.mN}頭中${sib.over}頭が${sib.th}mm超えです。` : "",
+    sib && sib.th && sib.mN ? `同腹♂は${sib.mN}頭中${sib.over}頭が${sib.th}mm以上です。` : "",
     "よろしくお願いします。",
     "（ここにヤフオクのURLを貼る）",
     tags,
@@ -2110,9 +2111,12 @@ function renderBeetles() {
   const alive = bs.filter(b => !isArchived(b));
   // 上の頭数：種別「すべて」なら全部の数、種別を選んだらその種類の数（2026-11-17 あっきーさんの案）
   const aliveSp = alive.filter(b => !state.species || (b.species || "（種別なし）") === state.species);
-  $("cLarva").innerHTML = `${aliveSp.filter(FILTERS[1].test).length}<small>頭</small>`;
-  $("cPupa").innerHTML = `${aliveSp.filter(FILTERS[2].test).length}<small>頭</small>`;
-  $("cAdult").innerHTML = `${aliveSp.filter(FILTERS[3].test).length}<small>頭</small>`;
+  // 頭数の横に ♂・♀ の数（2026-11-19 あっきーさんの案。性別が不明・未入力の個体は ♂♀ に数えない）
+  const cnt = test => { const l = aliveSp.filter(test), m = l.filter(b => b.sex === "♂").length, f = l.filter(b => b.sex === "♀").length;
+    return `${l.length}<small>頭</small><span class="sexcount">♂${m}・♀${f}</span>`; };
+  $("cLarva").innerHTML = cnt(FILTERS[1].test);
+  $("cPupa").innerHTML = cnt(FILTERS[2].test);
+  $("cAdult").innerHTML = cnt(FILTERS[3].test);
   document.querySelectorAll("#viewBeetles .stages .label").forEach((el, i) => { el.textContent = ["幼虫・卵", "前蛹・蛹", "成虫"][i] + (state.species ? `（${state.species}）` : ""); });
 
   // 長く更新のない個体のお知らせ（「あとで」を押したら、この画面を開き直すまで出さない）
@@ -3175,8 +3179,8 @@ function yearHtml(y) {
       <tr><th>収入（全部）</th><td>${esc(yenMark(r.inc))}</td><th>支出</th><td>${esc(yenMark(r.out))}</td></tr>
     </tbody></table>
     <div><div style="font-weight:700;margin-bottom:1mm">種類ごとの羽化（${y}年に羽化した個体）</div>
-    <table><thead><tr><th>種類</th><th>羽化</th><th>♂平均</th><th>♂最大</th><th>◯mm超え</th><th>♀平均</th><th>♀最大</th></tr></thead>
-      <tbody>${r.bySp.map(({ sp, s }) => `<tr><td>${esc(sp)}</td><td>${s.eclosed}頭</td><td>${s.mAvg ? n(s.mAvg) + "mm" : "—"}</td><td>${s.mMax ? n(s.mMax) + "mm" : "—"}</td><td>${s.th && s.mN ? `${s.over}/${s.mN}（${s.th}mm超え）` : "—"}</td><td>${s.fAvg ? n(s.fAvg) + "mm" : "—"}</td><td>${s.fMax ? n(s.fMax) + "mm" : "—"}</td></tr>`).join("") || '<tr><td colspan="7">この年に羽化した個体はありません。</td></tr>'}</tbody></table></div>
+    <table><thead><tr><th>種類</th><th>羽化</th><th>♂平均</th><th>♂最大</th><th>◯mm以上</th><th>♀平均</th><th>♀最大</th></tr></thead>
+      <tbody>${r.bySp.map(({ sp, s }) => `<tr><td>${esc(sp)}</td><td>${s.eclosed}頭</td><td>${s.mAvg ? n(s.mAvg) + "mm" : "—"}</td><td>${s.mMax ? n(s.mMax) + "mm" : "—"}</td><td>${s.th && s.mN ? `${s.over}/${s.mN}（${s.th}mm以上）` : "—"}</td><td>${s.fAvg ? n(s.fAvg) + "mm" : "—"}</td><td>${s.fMax ? n(s.fMax) + "mm" : "—"}</td></tr>`).join("") || '<tr><td colspan="7">この年に羽化した個体はありません。</td></tr>'}</tbody></table></div>
     ${r.top.length ? `<div><div style="font-weight:700;margin-bottom:1mm">♂の大きい順（上位${r.top.length}頭）</div>
     <table><thead><tr><th>No.</th><th>種類</th><th>サイズ</th><th>累代</th><th>羽化日</th><th>♂親×♀親</th></tr></thead>
       <tbody>${r.top.map(b => `<tr><td>${esc(nameOf(b))}</td><td>${esc(b.species || "")}</td><td class="price">${esc(sizeOf(b))}</td><td>${esc(b.line || "")}</td><td>${esc(fmtDate(b.eclosionDate))}</td><td>${esc([b.fatherSize ? "♂" + b.fatherSize : "", b.motherSize ? "♀" + b.motherSize : ""].filter(Boolean).join(" × "))}</td></tr>`).join("")}</tbody></table></div>` : ""}
