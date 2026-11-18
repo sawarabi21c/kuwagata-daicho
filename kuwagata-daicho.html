@@ -438,6 +438,16 @@ label.unit.days::after { bottom: 9px; }
 .stag-bottom { margin-top: auto; display: flex; gap: 2mm; align-items: flex-end; }
 .stag-bottom .stag-price { flex: 1; margin-top: 0; }
 .stag-qr { width: 14mm; flex: none; }
+.dd { position: relative; display: grid; }
+.dd input { padding-right: 2.4em; }
+.dd input::-webkit-calendar-picker-indicator { display: none !important; opacity: 0; }
+.dd-btn { position: absolute; right: 1px; top: 1px; bottom: 1px; width: 2.2em; border: 0; border-left: 1px solid var(--line); border-radius: 0 6px 6px 0; background: var(--surface); color: var(--muted); font-size: 11px; cursor: pointer; padding: 0; }
+.dd-btn:hover { color: var(--ink); }
+.dd-pop { position: fixed; z-index: 1000; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 4px; -webkit-overflow-scrolling: touch; }
+.dd-item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 9px 10px; font-size: 15px; border-radius: 6px; cursor: pointer; color: var(--ink); }
+.dd-item small { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.dd-item:hover, .dd-item.on { background: var(--line); }
+.dd-none { padding: 9px 10px; font-size: 13px; color: var(--muted); }
 .print-only { display: none; }
 @page labels { size: A4; margin: 0; }
 @media print {
@@ -4520,6 +4530,60 @@ document.addEventListener("submit", async e => {
     }
   }
 });
+
+/* ---------- 候補の一覧（▼ボタン） ---------- */
+// 候補つきの入力欄（list= がある欄）の右に ▼ を付ける。押すと、入っている文字に関係なく候補を全部出す
+// （iPhoneのSafariは候補の一覧を出せず、PCも入っている文字で候補がしぼられて選べなくなるため。2026-11-18）
+function ddEnhance(root = document) {
+  root.querySelectorAll("input[list]:not([data-ddon])").forEach(inp => {
+    inp.dataset.ddon = "1";
+    const w = document.createElement("span");
+    w.className = "dd";
+    inp.parentNode.insertBefore(w, inp);
+    w.appendChild(inp);
+    w.insertAdjacentHTML("beforeend", '<button type="button" class="dd-btn" data-dd tabindex="-1" aria-label="候補から選ぶ">▼</button>');
+  });
+}
+let ddInput = null;
+function ddClose() { const pop = $("ddPop"); if (pop) pop.remove(); ddInput = null; }
+function ddOpen(inp) {
+  ddClose();
+  const dl = document.getElementById(inp.getAttribute("list"));
+  const opts = dl ? [...dl.querySelectorAll("option")].filter(o => o.value) : [];
+  const pop = document.createElement("div");
+  pop.id = "ddPop"; pop.className = "dd-pop"; pop.setAttribute("role", "listbox");
+  pop.innerHTML = opts.length
+    ? opts.map((o, i) => `<button type="button" class="dd-item${o.value === inp.value ? " on" : ""}" data-ddpick="${i}">${esc(o.value)}${o.textContent.trim() && o.textContent.trim() !== o.value ? `<small>${esc(o.textContent.trim())}</small>` : ""}</button>`).join("")
+    : `<div class="dd-none">候補がありません（「種類の登録」で足せます）</div>`;
+  pop._opts = opts.map(o => o.value);
+  document.body.appendChild(pop);
+  const r = inp.closest(".dd").getBoundingClientRect(), vh = window.innerHeight;
+  const below = vh - r.bottom - 8, above = r.top - 8, up = below < 180 && above > below;
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 180) - 8)) + "px";
+  pop.style.minWidth = Math.max(r.width, 180) + "px";
+  pop.style.maxHeight = Math.max(120, Math.min(320, up ? above : below)) + "px";
+  if (up) pop.style.bottom = (vh - r.top + 4) + "px"; else pop.style.top = (r.bottom + 4) + "px";
+  ddInput = inp;
+  const on = pop.querySelector(".on"); if (on) on.scrollIntoView({ block: "nearest" });
+}
+document.addEventListener("click", e => {
+  const btn = e.target.closest("[data-dd]");
+  if (btn) { e.preventDefault(); const inp = btn.parentNode.querySelector("input"); if (ddInput === inp) ddClose(); else ddOpen(inp); return; }
+  const it = e.target.closest("[data-ddpick]");
+  if (it && ddInput) {
+    const inp = ddInput, v = $("ddPop")._opts[+it.dataset.ddpick];
+    ddClose();
+    inp.value = v;
+    inp.dispatchEvent(new Event("input", { bubbles: true }));
+    inp.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+  if (ddInput && !e.target.closest("#ddPop")) ddClose();
+}, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && ddInput) { e.stopImmediatePropagation(); ddClose(); } }, true);
+document.addEventListener("scroll", e => { if (ddInput && !(e.target.closest && e.target.closest("#ddPop"))) ddClose(); }, true);
+window.addEventListener("resize", () => { if (ddInput) ddClose(); });
+new MutationObserver(() => ddEnhance()).observe(document.body, { childList: true, subtree: true });
 
 /* ---------- boot ---------- */
 takeRoute();
