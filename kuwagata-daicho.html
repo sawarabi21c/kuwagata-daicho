@@ -552,6 +552,8 @@ label.unit.days::after { bottom: 9px; }
 </div>
 <div class="toast" id="toast" hidden></div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
+<input type="file" id="updFile" accept=".json,.txt,application/json,text/plain" hidden>
+<input type="file" id="csvFile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
 <input type="file" id="imageFile" accept="image/*" hidden>
 <input type="file" id="logoFile" accept="image/*" hidden>
 <input type="file" id="photosFile" accept="image/*" multiple hidden>
@@ -618,7 +620,7 @@ const isHidden = k => (state.masters.hiddenFields || DEFAULT_HIDDEN).includes(k)
 const isLarva = b => stageGroup(b.stage) === "larva";
 const isAdult = b => stageGroup(b.stage) === "adult";
 
-const state = { view: "beetles", masters: { species: [], food: [], container: [], intervals: {}, defaultInterval: 90, breederName: "", hiddenFields: [...DEFAULT_HIDDEN], mixes: [], staleMonths: 12 }, beetles: [], pairs: [], money: [], stock: [], moneyYear: new Date().getFullYear(), moneyMonth: 0, listMode: "card", sort: { key: "code", dir: 1 }, species: "", lastShown: [], bulkIds: [], copyFrom: null, labelIds: [], pairLabelIds: [], listingIds: [], careIds: [], spIds: [], spGroups: [], spPrices: {}, spKind: "stock", lineSp: "",saleIds: [], saleTypeTouched: false, histFilter: "all", histQ: "", filter: "all", pairFilter: "active", q: "", openId: null, loaded: false, mode: "view", pendingImport: null, draftImage: undefined, sheetIds: [], backTo: null };
+const state = { view: "beetles", masters: { species: [], food: [], container: [], intervals: {}, defaultInterval: 90, breederName: "", hiddenFields: [...DEFAULT_HIDDEN], mixes: [], staleMonths: 12 }, beetles: [], pairs: [], money: [], stock: [], moneyYear: new Date().getFullYear(), moneyMonth: 0, listMode: "card", sort: { key: "code", dir: 1 }, species: "", lastShown: [], bulkIds: [], copyFrom: null, labelIds: [], pairLabelIds: [], listingIds: [], careIds: [], spIds: [], spGroups: [], spPrices: {}, spKind: "stock", lineSp: "",saleIds: [], saleTypeTouched: false, histFilter: "all", histQ: "", filter: "all", pairFilter: "active", q: "", openId: null, loaded: false, mode: "view", pendingImport: null, pendingUpdate: null, csvImp: null, csvMode: "beetles", draftImage: undefined, sheetIds: [], backTo: null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pad = n => String(n).padStart(2, "0");
@@ -2268,7 +2270,7 @@ function openPanel(id, mode = "view") {
   renderPanel();
   $("panel").scrollTop = 0;
 }
-function closePanel() { state.openId = null; state.pendingImport = null; state.backTo = null; state.dirty = false; $("overlay").hidden = true; render(); }
+function closePanel() { state.openId = null; state.pendingImport = null; state.pendingUpdate = null; state.csvImp = null; state.backTo = null; state.dirty = false; $("overlay").hidden = true; render(); }
 // 入力画面：外側のクリックでは閉じない（×・キャンセル・Escだけで閉じる）
 const INPUT_MODES = ["edit", "new", "pairEdit", "pairNew", "kids", "bulk", "sale", "money", "stock", "mix", "stale", "listing", "sp", "sheet"];
 // ここに入力すると「まだ保存していない」とみなすフォーム
@@ -3518,6 +3520,8 @@ function backupPanel() {
       <button class="close" type="button" data-close aria-label="閉じる">×</button>
     </div>
     ${syncBoxHtml()}
+    ${updBoxHtml()}
+    ${csvBoxHtml()}
     <div class="box">
       <h3 class="section-title">書き出す</h3>
       <p class="hint">最後のバックアップ：<span class="num">${last ? fmtDate(last.slice(0, 10)) : "まだありません"}</span> ・ 個体 <span class="num">${state.beetles.length}</span> 頭 ・ ペア <span class="num">${state.pairs.length}</span> 組</p>
@@ -3798,6 +3802,362 @@ async function applyImport(replace) {
   toast(`個体${beetles.length}頭・ペア${pairs.length}組・収支${money.length}件・用品${stock.length}品を${replace ? "復元" : "追加"}しました`);
 }
 
+/* ---------- 写真から読み取った値の取り込み ----------
+   AI担当が写真（ラベル・体重計）から作った小さなJSONを、名前（code）で個体に合わせ、
+   「古い値→新しい値」を並べて見せる。チェックしたものだけを、人が「反映する」を押して書き込む。
+   形：{"items":[{"code":"M.T2026B_20","pupationDate":"2026-11-17","pupaWeight":34.8,"eclosionDate":"","sizeMm":""}]}
+   入れられる項目は UPD_FIELDS の4つだけ。新しい個体は作らない。 */
+const UPD_FIELDS = [
+  { key: "pupationDate", label: "蛹化日", kind: "date" },
+  { key: "pupaWeight", label: "蛹化時の体重", kind: "num", unit: "g" },
+  { key: "eclosionDate", label: "羽化日", kind: "date" },
+  { key: "sizeMm", label: "体長", kind: "num", unit: "mm" },
+];
+const updShow = (f, v) => v === undefined || v === null || v === "" ? "（空）" : f.kind === "date" ? fmtDate(v) : `${v}${f.unit}`;
+function parseUpdate(text, name) {
+  const src = String(text || "").trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/, "");
+  let data;
+  try { data = JSON.parse(src); } catch { return null; }
+  const items = Array.isArray(data) ? data : data && Array.isArray(data.items) ? data.items : null;
+  if (!items) return null;
+  const rows = [], problems = [];
+  items.forEach(it => {
+    const code = String((it && it.code) ?? "").trim();
+    if (!code) { problems.push("名前（code）のない行があります"); return; }
+    const b = byName(code);
+    if (!b) { problems.push(`${code}：台帳にありません（取り込みません）`); return; }
+    let any = false;
+    UPD_FIELDS.forEach(f => {
+      const raw = it[f.key];
+      if (raw === undefined || raw === null || raw === "") return;
+      any = true;
+      let v;
+      if (f.kind === "num") {
+        v = Number(raw);
+        if (!(v > 0 && v < 300)) { problems.push(`${code}：${f.label}「${raw}」は数字として読めません`); return; }
+      } else {
+        v = String(raw);
+        const dt = new Date(`${v}T00:00:00`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(dt) || localDate(dt) !== v) { problems.push(`${code}：${f.label}「${raw}」は日付（2026-11-17の形）として読めません`); return; }
+      }
+      const old = b[f.key];
+      const empty = old === undefined || old === null || old === "";
+      const same = !empty && (f.kind === "num" ? Number(old) === v : old === v);
+      rows.push({ id: b.id, code: b.code, key: f.key, label: f.label, f, old, val: v, same, empty, pick: empty });
+    });
+    if (!any) problems.push(`${code}：取り込む項目がありません`);
+  });
+  return { name, rows, problems };
+}
+function updBoxHtml() {
+  const u = state.pendingUpdate;
+  if (!u) {
+    return `<div class="box">
+      <h3 class="section-title">写真から読み取った値を取り込む</h3>
+      <p class="hint">AI担当が写真（ラベル・体重計）から作った「取り込み用の文章」を、ここに貼り付けるか、ファイルで選びます。まず内容の確認が出て、チェックを入れたものだけが台帳に入ります。入れられるのは、蛹化日・蛹化時の体重・羽化日・体長の4つです。</p>
+      <textarea id="updText" rows="4" style="font-family:var(--f-data);font-size:13px" placeholder='{"items":[{"code":"M.T2026B_20","pupaWeight":34.8}]}'></textarea>
+      <div class="row"><button class="btn" type="button" data-upd-check>内容を確認する</button><button class="btn" type="button" data-upd-file>ファイルを選ぶ</button></div>
+    </div>`;
+  }
+  const n = u.rows.filter(r => r.pick).length;
+  return `<div class="box">
+    <h3 class="section-title">取り込みの確認${u.name ? `（${esc(u.name)}）` : ""}</h3>
+    ${u.rows.length ? `<div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>入れる</th><th>名前</th><th>項目</th><th>今の値</th><th>新しい値</th></tr></thead>
+      <tbody>${u.rows.map((r, i) => `<tr>
+        <td>${r.same ? "同じ" : `<input type="checkbox" data-upd-pick="${i}" ${r.pick ? "checked" : ""} aria-label="${esc(r.code)}の${esc(r.label)}を入れる">`}</td>
+        <td>${esc(r.code)}</td><td>${esc(r.label)}</td>
+        <td>${esc(updShow(r.f, r.old))}</td>
+        <td><strong>${esc(updShow(r.f, r.val))}</strong>${!r.same && !r.empty ? ` <span class="hint" style="display:inline;color:var(--danger)">上書き</span>` : ""}</td>
+      </tr>`).join("")}</tbody></table></div>`
+      : `<p class="hint">台帳に入れられる項目が見つかりませんでした。</p>`}
+    ${u.problems.length ? `<div class="confirm"><span>入れられなかったもの</span><ul style="margin:0;padding-left:18px">${u.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+    <p class="hint">「上書き」は、今の値を新しい値に置き換えます。最初はチェックなしなので、合っているものだけ入れてください。</p>
+    <div class="row"><button class="btn small" type="button" data-upd-cancel>やめる</button><button class="btn small primary" type="button" data-upd-apply ${n ? "" : "disabled"}>チェックした${n}件を反映する</button></div>
+  </div>`;
+}
+function updCheck(text, name) {
+  const u = parseUpdate(text, name);
+  if (!u) return toast("取り込み用の文章として読めません。{ \"items\": [ … ] } の形にしてください");
+  state.pendingUpdate = u;
+  if ($("overlay").hidden || state.mode !== "backup") openPanel(null, "backup"); else renderPanel();
+}
+async function applyUpdate() {
+  const u = state.pendingUpdate;
+  if (!u) return;
+  const picked = u.rows.filter(r => r.pick && !r.same);
+  if (!picked.length) return toast("入れる項目にチェックがありません");
+  const byId = new Map();
+  picked.forEach(r => {
+    if (!byId.has(r.id)) byId.set(r.id, structuredClone(state.beetles.find(b => b.id === r.id)));
+    byId.get(r.id)[r.key] = r.val;
+  });
+  try { await store.putMany([...byId.values()]); }
+  catch { toast("保存できませんでした。ブラウザの保存容量を確認してください"); return; }
+  state.beetles = await store.all();
+  state.pendingUpdate = null;
+  closePanel();
+  toast(`${byId.size}頭・${picked.length}項目を台帳に入れました`);
+}
+$("updFile").addEventListener("change", async e => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  updCheck(await file.text(), file.name);
+});
+
+/* ---------- 表計算（CSV）から個体・収支を取り込む ----------
+   他のアプリやExcelの記録を、列の対応づけ → 確認 → 反映の順で台帳に入れる。
+   台帳にすでにある名前はスキップ（チェックすると上書き）。種類・えさなどの一覧(masters)には足さず、個体の記録にだけ入れる。
+   Excelの「CSV（コンマ区切り）」はShift_JISなので、UTF-8で読めなければShift_JISで読む。 */
+const IMP_BEETLE = [
+  { key: "code", label: "名前", kind: "text", alias: ["名前", "管理番号", "管番", "コード", "個体名", "個体番号", "個体", "code", "no", "no."] },
+  { key: "species", label: "種類", kind: "text", alias: ["種別", "種類", "種名", "品種", "species"] },
+  { key: "sex", label: "性別", kind: "sex", alias: ["性別", "雌雄", "性", "sex"] },
+  { key: "line", label: "累代", kind: "text", alias: ["累代", "ライン", "line"] },
+  { key: "locality", label: "産地", kind: "text", alias: ["産地", "産地・血統"] },
+  { key: "breeder", label: "ブリーダー", kind: "text", alias: ["ブリーダー", "ブリーダー名"] },
+  { key: "stage", label: "状態（卵・幼虫・蛹・成虫など）", kind: "stage", alias: ["状態", "成長段階", "ステージ", "stage"] },
+  { key: "status", label: "現状（飼育中・販売済など）", kind: "status", alias: ["現状", "ステータス", "status"] },
+  { key: "rank", label: "ランク", kind: "text", alias: ["ランク", "rank"] },
+  { key: "sizeMm", label: "体長(mm)", kind: "num", alias: ["体長", "サイズ", "体長mm", "サイズmm", "size"] },
+  { key: "headWidth", label: "頭幅(mm)", kind: "num", alias: ["頭幅"] },
+  { key: "jaw", label: "あご(mm)", kind: "num", alias: ["あご", "顎"] },
+  { key: "fatherName", label: "♂親", kind: "text", alias: ["♂親", "父", "父親", "親♂", "♂親名"] },
+  { key: "fatherSize", label: "♂親サイズ(mm)", kind: "num", alias: ["♂親サイズ", "父サイズ", "親♂サイズ"] },
+  { key: "motherName", label: "♀親", kind: "text", alias: ["♀親", "母", "母親", "親♀", "♀親名"] },
+  { key: "motherSize", label: "♀親サイズ(mm)", kind: "num", alias: ["♀親サイズ", "母サイズ", "親♀サイズ"] },
+  { key: "hatchDate", label: "孵化日", kind: "date", alias: ["孵化日", "孵化"] },
+  { key: "harvestDate", label: "割り出し日", kind: "date", alias: ["割り出し日", "割出日", "割出", "割り出し"] },
+  { key: "pupationDate", label: "蛹化日", kind: "date", alias: ["蛹化日", "蛹化"] },
+  { key: "pupaWeight", label: "蛹化時の体重(g)", kind: "num", alias: ["蛹化時の体重", "蛹体重", "蛹重"] },
+  { key: "eclosionDate", label: "羽化日", kind: "date", alias: ["羽化日", "羽化"] },
+  { key: "feedStartDate", label: "後食開始日", kind: "date", alias: ["後食開始日", "後食"] },
+  { key: "feeding", label: "飼育方法（えさ）", kind: "text", alias: ["飼育方法", "えさ", "餌"] },
+  { key: "container", label: "容器", kind: "text", alias: ["容器", "ボトル"] },
+  { key: "memo", label: "コメント", kind: "text", alias: ["コメント", "メモ", "備考"] },
+  ...[1, 2, 3, 4].flatMap(n => [
+    { key: `ex${n}Date`, label: `えさ交換${n}回目の日付`, kind: "date", alias: [] },
+    { key: `ex${n}Weight`, label: `えさ交換${n}回目の体重(g)`, kind: "num", alias: [] },
+    { key: `ex${n}Food`, label: `えさ交換${n}回目のえさ`, kind: "text", alias: [] },
+  ]),
+];
+const IMP_MONEY = [
+  { key: "date", label: "日付", kind: "date", alias: ["日付", "日", "date"] },
+  { key: "type", label: "区分（収入・支出）", kind: "mtype", alias: ["区分", "収支", "収入支出"] },
+  { key: "category", label: "分類", kind: "text", alias: ["分類", "カテゴリ", "種類"] },
+  { key: "item", label: "内容", kind: "text", alias: ["内容", "品名", "項目"] },
+  { key: "qty", label: "数量", kind: "text", alias: ["数量"] },
+  { key: "amount", label: "金額(円)", kind: "amount", alias: ["金額", "金額円", "価格"] },
+  { key: "shop", label: "店・相手", kind: "text", alias: ["店・相手", "店", "相手", "購入先"] },
+  { key: "memo", label: "メモ", kind: "text", alias: ["メモ", "備考", "コメント"] },
+  { key: "saleType", label: "販売の形", kind: "text", alias: ["販売の形"] },
+];
+const impFields = mode => mode === "money" ? IMP_MONEY : IMP_BEETLE;
+const impNormH = s => String(s || "").normalize("NFKC").replace(/[（(].*?[）)]/g, "").replace(/\s+/g, "").toLowerCase();
+function impGuess(header, mode) {
+  const h = impNormH(header);
+  if (!h) return "";
+  const f = impFields(mode).find(x => x.alias.some(a => impNormH(a) === h));
+  if (f) return f.key;
+  const m = mode === "beetles" && h.match(/^(?:交換|菌糸瓶|ボトル|瓶)?([1-4])(?:回目|本目)?(日付|日|体重|えさ)$/);
+  return m ? `ex${m[1]}${m[2] === "体重" ? "Weight" : m[2] === "えさ" ? "Food" : "Date"}` : "";
+}
+function impDecode(buf) {
+  let s;
+  try { s = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch { s = new TextDecoder("shift_jis").decode(buf); }
+  return s.replace(/^﻿/, "");
+}
+function impParse(text) {
+  const first = text.split(/\r?\n/, 1)[0] || "";
+  const d = (first.match(/\t/g) || []).length > (first.match(/,/g) || []).length ? "\t" : ",";
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ""));
+}
+function impVal(kind, raw) {
+  const s = String(raw).normalize("NFKC").trim();
+  if (kind === "text") return { v: String(raw).trim() };
+  if (kind === "num" || kind === "amount") {
+    const n = Number(s.replace(/[,，円gmmGMM\s]/g, ""));
+    return Number.isFinite(n) && (kind === "amount" ? true : n >= 0 && n < 1000) ? { v: n } : { err: 1 };
+  }
+  if (kind === "date") {
+    const m = s.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/) || s.match(/^(\d{2})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (!m) return { err: 1 };
+    const y = m[1].length === 2 ? 2000 + +m[1] : +m[1], v = `${y}-${pad(+m[2])}-${pad(+m[3])}`, dt = new Date(`${v}T00:00:00`);
+    return !isNaN(dt) && localDate(dt) === v ? { v } : { err: 1 };
+  }
+  if (kind === "sex") return { v: /^(♂|オス|雄|male|m)$/i.test(s) ? "♂" : /^(♀|メス|雌|female|f)$/i.test(s) ? "♀" : "不明" };
+  if (kind === "stage") {
+    const m = s.match(/^([123])令$/);
+    const v = STAGES.includes(s) ? s : m ? `幼虫(${m[1]}令)` : "";
+    return v ? { v } : { err: 1 };
+  }
+  if (kind === "status") return STATUSES.includes(s) ? { v: s } : { err: 1 };
+  if (kind === "mtype") return s === "収入" || s === "支出" ? { v: s } : { err: 1 };
+  return { err: 1 };
+}
+function csvLoad(text, name, mode) {
+  const rows = impParse(text);
+  if (rows.length < 2) return toast("取り込める行がありません（1行目は列の名前にしてください）");
+  const headers = rows[0].map(h => String(h).trim());
+  const used = new Set();
+  const map = headers.map(h => { const k = impGuess(h, mode); if (!k || used.has(k)) return ""; used.add(k); return k; });
+  state.csvImp = { mode, name, headers, rows: rows.slice(1), map, step: "map", items: [], problems: [] };
+  if ($("overlay").hidden || state.mode !== "backup") openPanel(null, "backup"); else renderPanel();
+}
+function csvBuild() {
+  const c = state.csvImp, items = [], problems = [], seen = new Set();
+  const F = Object.fromEntries(impFields(c.mode).map(f => [f.key, f]));
+  c.rows.forEach((r, ri) => {
+    const line = ri + 2, rec = {}, bad = [];
+    c.map.forEach((key, ci) => {
+      const raw = String(r[ci] ?? "").trim();
+      if (!key || raw === "") return;
+      const res = impVal(F[key].kind, raw);
+      if (res.err) bad.push(`${F[key].label}「${raw}」`); else rec[key] = res.v;
+    });
+    if (c.mode === "beetles") {
+      const code = rec.code;
+      if (!code) { problems.push(`${line}行目：名前がありません（入れません）`); return; }
+      if (seen.has(code)) { problems.push(`${line}行目：${code} は表の中で重複しています（入れません）`); return; }
+      seen.add(code);
+      [1, 2, 3, 4].forEach(n => { if ((rec[`ex${n}Weight`] !== undefined || rec[`ex${n}Food`]) && !rec[`ex${n}Date`]) problems.push(`${line}行目 ${code}：えさ交換${n}回目に日付がないので、その回は入れません`); });
+      if (bad.length) problems.push(`${line}行目 ${code}：読めなかった項目は空にしました（${bad.join("、")}）`);
+      const ex = byName(code);
+      items.push({ line, code, rec, exist: ex ? ex.id : "", pick: !ex });
+    } else {
+      if (rec.date === undefined || rec.amount === undefined) { problems.push(`${line}行目：日付か金額が読めないので入れません${bad.length ? `（${bad.join("、")}）` : ""}`); return; }
+      let type = rec.type;
+      if (!type) { if (rec.amount < 0) type = "支出"; else { problems.push(`${line}行目：区分（収入・支出）がなく、金額がプラスなので決められません（入れません）`); return; } }
+      const amount = Math.abs(rec.amount);
+      let category = rec.category || "", memo = rec.memo || "";
+      if (!MONEY_CATS[type].includes(category)) { if (category) memo = [memo, `元の分類：${category}`].filter(Boolean).join(" / "); category = "その他"; }
+      if (bad.length) problems.push(`${line}行目：読めなかった項目は空にしました（${bad.join("、")}）`);
+      const item = rec.item || "";
+      const dup = state.money.some(m => m.date === rec.date && m.type === type && Number(m.amount) === amount && String(m.item || "") === item);
+      items.push({ line, rec: { ...rec, type, amount, category, memo, item }, dup, pick: !dup });
+    }
+  });
+  c.items = items; c.problems = problems; c.step = "confirm";
+}
+function impLogs(rec, logs) {
+  const out = [...logs];
+  for (let n = 1; n <= 4; n++) {
+    const d = rec[`ex${n}Date`];
+    if (!d || out.some(l => isExchange(l) && l.date === d)) continue;
+    const l = { date: d, work: "えさ交換" };
+    if (rec[`ex${n}Weight`] !== undefined) l.weight = rec[`ex${n}Weight`];
+    if (rec[`ex${n}Food`]) l.food = rec[`ex${n}Food`];
+    out.push(l);
+  }
+  return out;
+}
+function impNewBeetle(rec) {
+  const b = { id: newId("b"), logs: [], createdAt: new Date().toISOString() };
+  Object.entries(rec).forEach(([k, v]) => { if (!/^ex\d/.test(k)) b[k] = v; });
+  b.status = b.status || "飼育中"; b.sex = b.sex || "不明";
+  if (!b.stage) b.stage = b.eclosionDate ? "成虫" : b.pupationDate ? "蛹" : "幼虫(1令)";
+  b.logs = impLogs(rec, []);
+  return b;
+}
+function csvBoxHtml() {
+  const c = state.csvImp;
+  if (!c) {
+    return `<div class="box">
+      <h3 class="section-title">表計算（CSV）から取り込む</h3>
+      <p class="hint">ほかのアプリやExcelの記録を、台帳に移します。表を「CSV」で保存して選ぶと、列の対応づけ → 確認 → 反映の順に進みます。台帳にすでにある名前は、最初はスキップします。まず「見本のCSV」を保存して、列の形を見るのがおすすめです。</p>
+      <div class="backup-actions">
+        <button class="btn" type="button" data-csv-open="beetles">個体のCSVを選ぶ<small>名前・種類・累代・サイズ・親・日付・えさ交換など</small></button>
+        <button class="btn" type="button" data-csv-open="money">収支のCSVを選ぶ<small>日付・区分・分類・内容・金額など</small></button>
+        <button class="btn" type="button" data-csv-sample="beetles">個体の見本CSVを保存<small>列の名前と、見本の1行が入っています</small></button>
+        <button class="btn" type="button" data-csv-sample="money">収支の見本CSVを保存</button>
+      </div>
+    </div>`;
+  }
+  const label = c.mode === "money" ? "収支" : "個体";
+  if (c.step === "map") {
+    const fields = impFields(c.mode);
+    const need = c.mode === "money" ? ["date", "amount"] : ["code"];
+    return `<div class="box">
+      <h3 class="section-title">${label}のCSV：列の対応づけ（${esc(c.name)}・${c.rows.length}行）</h3>
+      <p class="hint">表の各列を、台帳のどの項目に入れるか選びます。自動で合わせたので、違う所だけ直してください。「使わない」の列は取り込みません。</p>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>表の列</th><th>1行目の値</th><th>入れる先</th></tr></thead>
+        <tbody>${c.headers.map((h, i) => `<tr><td>${esc(h || "（名前なし）")}</td><td>${esc(String(c.rows[0][i] ?? "").slice(0, 24))}</td>
+          <td><select data-csv-col="${i}"><option value="">使わない</option>${fields.map(f => `<option value="${f.key}"${c.map[i] === f.key ? " selected" : ""}>${esc(f.label)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>
+      <p class="hint">必ず必要な項目：${need.map(k => esc(fields.find(f => f.key === k).label)).join("・")}</p>
+      <div class="row"><button class="btn small" type="button" data-csv-cancel>やめる</button><button class="btn small primary" type="button" data-csv-check>内容を確認する</button></div>
+    </div>`;
+  }
+  const n = c.items.filter(x => x.pick).length;
+  const sumB = x => [x.rec.species, x.rec.sex, x.rec.line, x.rec.sizeMm ? `${x.rec.sizeMm}mm` : "", x.rec.stage].filter(Boolean).join(" ");
+  const sumM = x => [x.rec.date, x.rec.type, x.rec.category, x.rec.item, `${x.rec.amount}円`].filter(Boolean).join(" ");
+  return `<div class="box">
+    <h3 class="section-title">${label}のCSV：取り込みの確認（${esc(c.name)}）</h3>
+    ${c.items.length ? `<div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>入れる</th><th>行</th><th>${c.mode === "money" ? "内容" : "名前・内容"}</th><th>状態</th></tr></thead>
+      <tbody>${c.items.map((x, i) => `<tr>
+        <td><input type="checkbox" data-csv-row="${i}" ${x.pick ? "checked" : ""} aria-label="${esc(x.code || x.rec.item || String(x.line))}を入れる"></td>
+        <td>${x.line}</td>
+        <td>${c.mode === "money" ? esc(sumM(x)) : `<strong>${esc(x.code)}</strong> ${esc(sumB(x))}`}</td>
+        <td>${c.mode === "money" ? (x.dup ? `<span class="hint" style="display:inline;color:var(--danger)">同じ記録があります</span>` : "新規") : (x.exist ? `<span class="hint" style="display:inline;color:var(--danger)">すでにあります（チェックすると上書き）</span>` : "新規")}</td>
+      </tr>`).join("")}</tbody></table></div>` : `<p class="hint">入れられる行が見つかりませんでした。</p>`}
+    ${c.problems.length ? `<div class="confirm"><span>確認してほしいもの</span><ul style="margin:0;padding-left:18px">${c.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+    <p class="hint">上書きは、表に値がある項目だけを今の記録に重ねます（表が空の項目は残ります）。えさ交換は、同じ日付の記録が無い回だけ足します。種類・えさ・累代などの一覧には足しません。</p>
+    <div class="row"><button class="btn small" type="button" data-csv-back>列の対応づけに戻る</button><button class="btn small" type="button" data-csv-cancel>やめる</button><button class="btn small primary" type="button" data-csv-apply ${n ? "" : "disabled"}>チェックした${n}件を入れる</button></div>
+  </div>`;
+}
+async function csvApply() {
+  const c = state.csvImp, picked = c ? c.items.filter(x => x.pick) : [];
+  if (!picked.length) return toast("入れる行にチェックがありません");
+  try {
+    if (c.mode === "money") {
+      await store.putMany(picked.map(x => ({ id: newId("m"), createdAt: new Date().toISOString(), saleType: "", qty: "", shop: "", ...x.rec })), "money");
+      state.money = await store.all("money");
+    } else {
+      const list = picked.map(x => {
+        if (!x.exist) return impNewBeetle(x.rec);
+        const b = structuredClone(state.beetles.find(t => t.id === x.exist));
+        Object.entries(x.rec).forEach(([k, v]) => { if (!/^ex\d/.test(k)) b[k] = v; });
+        b.logs = impLogs(x.rec, b.logs || []);
+        return b;
+      });
+      await store.putMany(list);
+      state.beetles = await store.all();
+    }
+  } catch { return toast("保存できませんでした。ブラウザの保存容量を確認してください"); }
+  const mode = c.mode;
+  state.csvImp = null;
+  closePanel();
+  toast(`${picked.length}件を${mode === "money" ? "収支" : "個体"}に入れました`);
+}
+function csvSample(mode) {
+  const rows = mode === "money"
+    ? [["日付", "区分", "分類", "内容", "数量", "金額(円)", "店・相手", "メモ"], ["2026-11-01", "支出", "用品", "見本：菌糸瓶", "10", "5000", "見本の店", ""]]
+    : [["名前", "種類", "性別", "累代", "産地", "ブリーダー", "状態", "現状", "ランク", "体長(mm)", "頭幅(mm)", "あご(mm)", "♂親", "♂親サイズ(mm)", "♀親", "♀親サイズ(mm)", "孵化日", "割り出し日", "蛹化日", "蛹化時の体重(g)", "羽化日", "後食開始日",
+        "交換1日付", "交換1体重(g)", "交換1えさ", "交換2日付", "交換2体重(g)", "交換2えさ", "交換3日付", "交換3体重(g)", "交換3えさ", "交換4日付", "交換4体重(g)", "交換4えさ", "コメント"],
+       ["見本_01", "タランドゥス", "♂", "CBF1", "コンゴ民主共和国", "", "幼虫(3令)", "飼育中", "", "", "", "", "見本_親♂", "93.0", "見本_親♀", "57.7", "", "2026-03-16", "", "", "", "",
+        "2026-04-27", "8.6", "菌糸瓶", "2026-06-11", "34.1", "菌糸瓶", "", "", "", "", "", "", "（この行は見本です。消して使ってください）"]];
+  download(`kuwagata-sample-${mode}.csv`, toCsv(rows), "text/csv");
+  toast("見本のCSVを保存しました");
+}
+$("csvFile").addEventListener("change", async e => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  try { csvLoad(impDecode(await file.arrayBuffer()), file.name, state.csvMode); }
+  catch { toast("このファイルは読み込めませんでした"); }
+});
+
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
   const t = e.target.closest("button");
@@ -4062,6 +4422,21 @@ document.addEventListener("click", e => {
   if (t.dataset.export) return exportData(t.dataset.export);
   if (t.hasAttribute("data-import")) return $("importFile").click();
   if (t.hasAttribute("data-import-cancel")) { state.pendingImport = null; return renderPanel(); }
+  if (t.dataset.csvOpen) { state.csvMode = t.dataset.csvOpen; return $("csvFile").click(); }
+  if (t.dataset.csvSample) return csvSample(t.dataset.csvSample);
+  if (t.hasAttribute("data-csv-cancel")) { state.csvImp = null; return renderPanel(); }
+  if (t.hasAttribute("data-csv-back")) { state.csvImp.step = "map"; return renderPanel(); }
+  if (t.hasAttribute("data-csv-check")) {
+    const c = state.csvImp, need = c.mode === "money" ? ["date", "amount"] : ["code"];
+    const miss = need.filter(k => !c.map.includes(k));
+    if (miss.length) return toast(`「${impFields(c.mode).find(f => f.key === miss[0]).label}」に入れる列を選んでください`);
+    csvBuild(); return renderPanel();
+  }
+  if (t.hasAttribute("data-csv-apply")) return csvApply();
+  if (t.hasAttribute("data-upd-check")) return updCheck($("updText") ? $("updText").value : "", "");
+  if (t.hasAttribute("data-upd-file")) return $("updFile").click();
+  if (t.hasAttribute("data-upd-cancel")) { state.pendingUpdate = null; return renderPanel(); }
+  if (t.hasAttribute("data-upd-apply")) return applyUpdate();
   if (t.hasAttribute("data-import-merge")) return applyImport(false);
   if (t.hasAttribute("data-import-replace")) return applyImport(true);
   if (t.hasAttribute("data-pickimg")) return $("imageFile").click();
@@ -4138,6 +4513,25 @@ document.addEventListener("change", e => {
   const id = e.target.id;
   markDirty(e.target);
   if (id === "lineSp") { state.lineSp = e.target.value; return render(); }
+  if (e.target.dataset.csvCol !== undefined && state.csvImp) {
+    const c = state.csvImp, i = +e.target.dataset.csvCol, k = e.target.value;
+    if (k) c.map.forEach((x, j) => { if (j !== i && x === k) { c.map[j] = ""; const s = document.querySelector(`[data-csv-col="${j}"]`); if (s) s.value = ""; } });
+    c.map[i] = k;
+    return;
+  }
+  if (e.target.dataset.csvRow !== undefined && state.csvImp) {
+    const c = state.csvImp;
+    c.items[+e.target.dataset.csvRow].pick = e.target.checked;
+    const n = c.items.filter(x => x.pick).length, ab = document.querySelector("[data-csv-apply]");
+    if (ab) { ab.disabled = !n; ab.textContent = `チェックした${n}件を入れる`; }
+    return;
+  }
+  if (e.target.dataset.updPick !== undefined && state.pendingUpdate) {
+    state.pendingUpdate.rows[+e.target.dataset.updPick].pick = e.target.checked;
+    const n = state.pendingUpdate.rows.filter(r => r.pick).length, ab = document.querySelector("[data-upd-apply]");
+    if (ab) { ab.disabled = !n; ab.textContent = `チェックした${n}件を反映する`; }
+    return;
+  }
   if (id === "syncClientId") { meta.set("syncClientId", e.target.value.trim()); return toast("クライアントIDを保存しました"); }
   if (id === "syncMode") { meta.set("syncMode", e.target.value); renderSyncInfo(); return toast(e.target.value === "manual" ? "この端末は手動にしました" : "この端末は自動にしました"); }
   if (e.target.dataset.phdate !== undefined || e.target.dataset.phkind !== undefined) {
