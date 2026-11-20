@@ -99,6 +99,8 @@ h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(26px, 5vw
 
 /* list: 菌糸瓶ラベル風 */
 .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.list-more { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; padding: 8px 0 4px; }
+.pick-note { margin: 4px 0 0; }
 .card { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 0; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; transition: transform .15s ease, box-shadow .15s ease; }
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px dashed var(--line); }
@@ -181,6 +183,12 @@ textarea { min-height: 70px; resize: vertical; }
 .pill.lock { background: var(--amber-soft); color: var(--amber); }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 30; }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
+.terms { position: fixed; inset: 0; background: rgba(10, 14, 11, .55); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.terms-box { background: var(--bg); width: min(640px, 100%); max-height: 100%; overflow-y: auto; border-radius: 12px; box-shadow: var(--shadow); padding: 20px; display: grid; gap: 12px; }
+.terms-box h2 { margin: 0; font-size: 18px; }
+.terms-box h3 { margin: 6px 0 0; font-size: 15px; }
+.terms-box p, .terms-box ul { margin: 0; font-size: 14px; line-height: 1.7; }
+.terms-box ul { padding-left: 1.3em; }
 .backup-actions { display: grid; gap: 8px; }
 .backup-actions .btn { text-align: left; display: grid; gap: 2px; }
 .backup-actions .btn small { color: var(--muted); font-weight: 400; font-size: 12px; }
@@ -551,6 +559,7 @@ label.unit.days::after { bottom: 9px; }
   <div class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle"></div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="terms" id="terms" hidden><div class="terms-box" id="termsBox" role="dialog" aria-modal="true" aria-labelledby="termsTitle"></div></div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <input type="file" id="updFile" accept=".json,.txt,application/json,text/plain" hidden>
 <input type="file" id="csvFile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
@@ -559,7 +568,10 @@ label.unit.days::after { bottom: 9px; }
 <input type="file" id="photosFile" accept="image/*" multiple hidden>
 
 <script>
-const STAGES = ["卵", "幼虫(1令)", "幼虫(2令)", "幼虫(3令)", "前蛹", "蛹", "成虫", "死亡"];
+// 版の切り替え：あっきーさん用は "main"。ベータ版のファイル（kuwagata-daicho-beta.html）は、この1行だけ "beta" にしたコピー
+const EDITION = "main";
+const BETA = EDITION === "beta";
+const STAGES =["卵", "幼虫(1令)", "幼虫(2令)", "幼虫(3令)", "前蛹", "蛹", "成虫", "死亡"];
 const stageGroup = s => !s ? "larva" : s === "卵" || s.startsWith("幼虫") ? "larva" : s === "前蛹" || s === "蛹" ? "pupa" : s === "成虫" ? "adult" : s === "死亡" ? "dead" : "larva";
 // 死亡・販売・譲渡した個体は「履歴」に分ける
 const ARCHIVE_REASONS = ["死亡", "販売", "譲渡"];
@@ -620,6 +632,8 @@ const isHidden = k => (state.masters.hiddenFields || DEFAULT_HIDDEN).includes(k)
 const isLarva = b => stageGroup(b.stage) === "larva";
 const isAdult = b => stageGroup(b.stage) === "adult";
 
+// 一覧に一度に出す頭数、個体を選ぶ表に一度に出す頭数、まとめてえさ交換の上限（2026-11-20 あっきーさんが500に決めた）
+const LIST_PAGE = 500, PICK_MAX = 500;
 const state = { view: "beetles", masters: { species: [], food: [], container: [], intervals: {}, defaultInterval: 90, breederName: "", hiddenFields: [...DEFAULT_HIDDEN], mixes: [], staleMonths: 12 }, beetles: [], pairs: [], money: [], stock: [], moneyYear: new Date().getFullYear(), moneyMonth: 0, listMode: "card", sort: { key: "code", dir: 1 }, species: "", lastShown: [], bulkIds: [], copyFrom: null, labelIds: [], pairLabelIds: [], listingIds: [], careIds: [], spIds: [], spGroups: [], spPrices: {}, spKind: "stock", lineSp: "",saleIds: [], saleTypeTouched: false, histFilter: "all", histQ: "", filter: "all", pairFilter: "active", q: "", openId: null, loaded: false, mode: "view", pendingImport: null, pendingUpdate: null, csvImp: null, csvMode: "beetles", draftImage: undefined, sheetIds: [], backTo: null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -630,6 +644,8 @@ const daysUntil = d => Math.round((new Date(d + "T00:00:00") - new Date(today() 
 const fmtDate = d => d ? d.replace(/-/g, ".") : "—";
 const sexMark = s => s === "♂" ? '<span class="sex m">♂</span>' : s === "♀" ? '<span class="sex f">♀</span>' : "";
 const nameOf = b => b.code || "(名前なし)";
+// 日本語の並べ替え（数字は数として比べる）。localeCompare と同じ並びで、ずっと速い（2026-11-20）
+const jaCmp = new Intl.Collator("ja", { numeric: true }).compare;
 const byName = name => name ? state.beetles.find(b => b.code === name) : null;
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -687,7 +703,7 @@ function siblings(b) {
 }
 function childrenOf(p) {
   return state.beetles.filter(b => b.pairId === p.id || (!b.pairId && p.maleName && p.femaleName && b.fatherName === p.maleName && b.motherName === p.femaleName))
-    .sort((a, c) => (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+    .sort((a, c) => jaCmp(a.code || "", c.code || ""));
 }
 // 親の累代から子の累代を出す（WD→WF1、WF1→WF2、CBF1→CBF2、CB→CBF1）
 function parseLine(l) {
@@ -705,9 +721,9 @@ function childLine(a, b) {
   return p + (Math.max(...list.map(v => v.n)) + 1);
 }
 
-function toast(msg) {
+function toast(msg, ms = 2400) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2400);
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms);
 }
 
 /* ---------- 端末内保存（IndexedDB） ---------- */
@@ -716,13 +732,14 @@ const store = {
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open("kuwagata-daicho", 4);
+      const r = indexedDB.open(BETA ? "kuwagata-daicho-beta" : "kuwagata-daicho", 4); // ベータ版は記録の置き場所を分ける（同じアドレスの本物の記録と混ざらないように）
       r.onupgradeneeded = () => ["beetles", "pairs", "settings", "money", "stock"].forEach(n => { if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n, { keyPath: "id" }); });
       r.onsuccess = () => res(this._db = r.result);
       r.onerror = () => rej(r.error);
     });
   },
   async tx(name, mode, fn) {
+    if (mode === "readwrite") state.dataVer = (state.dataVer || 0) + 1; // 記録が変わった印（画面を閉じたときに一覧を描き直すかどうかに使う）
     const db = await this.open();
     return new Promise((res, rej) => {
       const t = db.transaction(name, mode);
@@ -741,12 +758,41 @@ const store = {
   async putMany(list, name = "beetles") { if (SYNC_STORES.includes(name)) { const now = new Date().toISOString(); list.forEach(b => b.updatedAt = now); } await this.tx(name, "readwrite", s => { list.forEach(b => s.put(b)); }); scheduleSync(); },
 };
 const meta = {
-  get(k) { try { return localStorage.getItem("kuwagata:" + k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem("kuwagata:" + k, v); } catch {} },
+  get(k) { try { return localStorage.getItem((BETA ? "kuwagata-beta:" : "kuwagata:") + k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem((BETA ? "kuwagata-beta:" : "kuwagata:") + k, v); } catch {} },
 };
+/* ---------- ご利用の前に（注意書き・免責事項） ---------- */
+// 文面を変えたら TERMS_VER を新しい日付にする（同意した端末にも、もう一度出る）
+const TERMS_VER = "2026-11-20-3"; // 画面には先頭の日付だけ出す
+function termsHtml(first) {
+  return `<h2 id="termsTitle">ご利用の前に（注意書き・免責事項）</h2>
+    <p>クワガタ飼育台帳（ベータ版）をお使いいただき、ありがとうございます。使い始める前に、次のことをお読みください。</p>
+    <h3>1. 記録の保存場所</h3>
+    ${BETA ? `<p>記録は、お使いのスマホ・PCのブラウザの中に保存されます。作者（Dorcus Laboratory）が見ることはできません。</p>
+    <p>通信料などの費用は、ご自身でご負担ください。</p>` : `<p>記録は、お使いのスマホ・PCのブラウザの中に保存されます。Googleドライブ同期を使うときは、ご自分のGoogleドライブにも保存されます。どちらも、作者（Dorcus Laboratory）が見ることはできません。</p>
+    <p>Googleドライブの空きが足りなくなって有料のプランが必要になったときや、通信料などの費用は、ご自身でご負担ください。</p>`}
+    <h3>2. バックアップのお願い</h3>
+    <p>次のようなときに、記録が消えることがあります。</p>
+    <ul><li>ホーム画面のアイコンを消したとき</li><li>ブラウザの履歴・データを消したとき</li><li>機種を変えたとき、スマホ・PCが壊れたとき</li></ul>
+    <p>${BETA ? "「バックアップ」から、こまめにバックアップファイルを保存してください。別の端末に移すときも、このファイルを使います。" : "「バックアップ・同期」から、こまめにバックアップファイルを保存するか、Googleドライブ同期をお使いください。"}</p>
+    <h3>3. ベータ版であること</h3>
+    <p>まだ試しに使っていただく段階のため、不具合が出ることがあります。気づいたことは、XのDMで教えてください。</p>
+    <h3>4. 責任の範囲</h3>
+    <p>次のことについて、作者は責任を負いかねます。</p>
+    <ul><li>記録が消えたり、壊れたりしたこと</li><li>記録・お知らせ（交換予定・割り出し予定など）の間違いや遅れによって、個体が死亡したり、飼育に影響が出たりしたこと</li><li>このアプリを使った販売・譲渡などの取引で起きたトラブル</li></ul>
+    <h3>5. 変更・終了</h3>
+    <p>アプリの中身は、予告なく変わったり、提供を終えたりすることがあります。ベータ版のあとの扱いは、決まり次第お知らせします。</p>
+    <h3>6. 禁止すること</h3>
+    <p>このアプリのファイルを、ほかの人に配ったり、作り変えて配ったり、売ったりすることはおやめください。これに反して作者に損害が出たときは、その損害の賠償を求めることがあります。</p>
+    <p class="hint">${TERMS_VER.slice(0, 10)} 版 ・ 作者：Dorcus Laboratory（X @01Dorcus）</p>
+    <div class="row end">${first
+      ? `<span class="hint">同意いただけない場合は、このページを閉じてください。</span><button class="btn primary" type="button" data-terms-agree>同意して使い始める</button>`
+      : `<button class="btn" type="button" data-terms-close>閉じる</button>`}</div>`;
+}
+function showTerms(first) { $("termsBox").innerHTML = termsHtml(first); $("terms").hidden = false; $("termsBox").scrollTop = 0; }
 /* ---------- QRコード（外の部品を使わず、ここで作る。バイトモード・誤り訂正M・型番1〜10） ---------- */
 // 中身は「アプリのアドレス＋#b=個体のid」など。iPhoneのカメラで読むと、アプリが開いてその画面へ進む
-const APP_URL = "https://sawarabi21c.github.io/kuwagata-daicho/kuwagata-daicho.html";
+const APP_URL = "https://sawarabi21c.github.io/kuwagata-daicho/" + (BETA ? "kuwagata-daicho-beta.html" : "kuwagata-daicho.html");
 const QR = (() => {
   const EXP = new Array(512), LOG = new Array(256);
   for (let i = 0, x = 1; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
@@ -935,7 +981,7 @@ const SYNC_STORES = ["beetles", "pairs", "money", "stock"];
 const PHOTO_FIELDS = ["image", "photos", "imageInfo"];
 state.sync = { status: "", busy: false, pending: false, error: "" };
 state.tombs = [];
-const syncOn = () => meta.get("syncOn") === "1";
+const syncOn = () => !BETA && meta.get("syncOn") === "1"; // ベータ版は同期を使わない（2026-11-20 決定）
 const syncAuto = () => meta.get("syncMode") !== "manual"; // 端末ごと。決めていなければ自動
 const syncClientId = () => (meta.get("syncClientId") || "").trim() || DEFAULT_CLIENT_ID;
 const canSync = () => /^https?:$/.test(location.protocol);
@@ -1100,6 +1146,7 @@ function renderSyncInfo() {
   if (state.mode === "backup" && !$("overlay").hidden && $("syncBox")) $("syncBox").outerHTML = syncBoxHtml();
 }
 function syncBoxHtml() {
+  if (BETA) return "";
   const last = meta.get("syncLast");
   if (!canSync()) return `<div class="box" id="syncBox"><h3 class="section-title">Googleドライブで同期</h3><p class="hint">いまはパソコンのファイルから開いているので、同期はできません。GitHubに置いたアプリ（https:// で始まるアドレス）で開くと使えます。くわしくは保管庫のノート「スマホ版の準備（GitHubとGoogle）」を見てください。</p></div>`;
   return `<div class="box" id="syncBox">
@@ -1188,14 +1235,14 @@ function renderMasters() {
     </section>
     <section class="box master">
       <div><h3 class="section-title">自分のブリーダー名</h3><p class="hint">新しく登録した個体や、ペアから一括登録した子の「ブリーダー」の欄に、自動で入ります。累代票にも出ます。</p></div>
-      <label>ブリーダー名<input type="text" id="breederName" value="${esc(state.masters.breederName || "")}" placeholder="例 あっきー"></label>
+      <label>ブリーダー名<input type="text" id="breederName" value="${esc(state.masters.breederName || "")}" placeholder="${BETA ? "例 ○○ブリード" : "例 あっきー"}"></label>
     </section>
     <section class="box master">
       <div><h3 class="section-title">長く更新のない個体</h3><p class="hint">ここで決めた期間、記録や編集のない飼育中の個体を、個体管理の画面の上でお知らせします。確かめてから「${STALE_REASON}」として履歴へ移せます。自動では移しません。保護（🔒）した個体と、ペアリング中・産卵セット中の個体は出ません。</p></div>
       <label>お知らせするまでの期間<select id="staleMonths">${[[0, "お知らせしない"], [6, "半年"], [12, "1年"], [18, "1年半"], [24, "2年"], [36, "3年"]].map(([n, t]) => `<option value="${n}"${Number(state.masters.staleMonths ?? 12) === n ? " selected" : ""}>${t}</option>`).join("")}</select></label>
     </section>
     <section class="box master">
-      <div><h3 class="section-title">ロゴ画像（販売用の印刷物）</h3><p class="hint">販売用ラベル・飼育記録シート・売り物の一覧・販売札に、ブランド名「Dorcus Laboratory」と一緒に載せます。保管庫の「広報/画像/ロゴ.webp」を選んでください。画像そのものは変えません（小さくして保存します）。</p></div>
+      <div><h3 class="section-title">ロゴ画像（販売用の印刷物）</h3><p class="hint">販売用ラベル・飼育記録シート・売り物の一覧・販売札に、${BETA ? "上の「自分のブリーダー名」と一緒に載せます。お店やブリーダーのロゴの画像を選んでください。" : "ブランド名「Dorcus Laboratory」と一緒に載せます。保管庫の「広報/画像/ロゴ.webp」を選んでください。"}画像そのものは変えません（小さくして保存します）。</p></div>
       <div class="row">${state.masters.logo ? `<img src="${state.masters.logo}" alt="ロゴ" style="width:64px;height:64px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px">` : '<span class="hint">まだ読み込んでいません（印刷物には文字だけが出ます）。</span>'}</div>
       <div class="row"><button class="btn small" type="button" data-picklogo>${state.masters.logo ? "画像を変える" : "画像を選ぶ"}</button>${state.masters.logo ? '<button class="btn small" type="button" data-clearlogo>外す</button>' : ""}</div>
     </section>
@@ -1208,7 +1255,7 @@ function renderMasters() {
       ${(state.masters.species || []).length ? `<ul class="master-list">${state.masters.species.map(sp => `<li><span>${esc(sp)}</span><span class="unit days" data-unit="日" style="max-width:8em"><input type="number" min="0" step="1" inputmode="numeric" data-harvestdays="${esc(sp)}" value="${esc((state.masters.harvestDays || {})[sp] ?? "")}" aria-label="${esc(sp)}の割り出しまでの日数"></span></li>`).join("")}</ul>` : '<p class="hint">先に「クワガタの種類」を登録してください。</p>'}
     </section>
     <section class="box master">
-      <div><h3 class="section-title">「◯mm以上」の基準（種類ごと）</h3><p class="hint">「ラインの成績」と出品文の「同腹兄弟の羽化実績」で、♂がこの大きさ以上（ちょうども含む）の頭数を数えます。空欄の種類は数えません（タランドゥスは空欄なら90mm）。</p></div>
+      <div><h3 class="section-title">「◯mm以上」の基準（種類ごと）</h3><p class="hint">「ラインの成績」と出品文の「同腹兄弟の羽化実績」で、♂がこの大きさ以上（ちょうども含む）の頭数を数えます。空欄の種類は数えません${BETA ? "" : "（タランドゥスは空欄なら90mm）"}。</p></div>
       ${(state.masters.species || []).length ? `<ul class="master-list">${state.masters.species.map(sp => `<li><span>${esc(sp)}</span><span class="unit" data-unit="mm" style="max-width:8em"><input type="number" min="0" step="0.1" inputmode="decimal" data-threshold="${esc(sp)}" value="${esc((state.masters.sizeThresholds || {})[sp] ?? "")}" placeholder="${esc(sizeThreshold(sp) ?? "")}" aria-label="${esc(sp)}の基準"></span></li>`).join("")}</ul>` : '<p class="hint">先に「クワガタの種類」を登録してください。</p>'}
     </section>
     <section class="box master" style="grid-column:1/-1">
@@ -1225,7 +1272,11 @@ function renderMasters() {
       </fieldset>`).join("")}</div>
       <p class="hint">「成虫」の欄は状態が成虫のときだけ、「次回交換予定とお知らせ」は幼虫・卵のときだけ出ます。採集の欄は、はじめは隠してあります。</p>
     </section>
-    <p class="hint" style="grid-column:1/-1">一覧から外しても、すでに入力済みの個体の記録は変わりません。並び順は選択肢の順番になります。</p>`;
+    <p class="hint" style="grid-column:1/-1">一覧から外しても、すでに入力済みの個体の記録は変わりません。並び順は選択肢の順番になります。</p>
+    <section class="box master" style="grid-column:1/-1">
+      <div><h3 class="section-title">ご利用の前に（注意書き・免責事項）</h3><p class="hint">初めて開いたときに出した注意書きを、もう一度読めます。</p></div>
+      <div class="row"><button class="btn small" type="button" id="termsBtn">注意書き・免責事項を読む</button></div>
+    </section>`;
 }
 
 /* ---------- 次回交換日の自動計算 ---------- */
@@ -1254,13 +1305,56 @@ function soldList(m) {
   return (m.beetleIds || []).map(id => state.beetles.find(b => b.id === id)).filter(Boolean).map(b => soldText(soldInfo(b)));
 }
 
-function saleForm() {
+/* ---------- 個体を選ぶ表（販売・出品文・ラベル・販売の印刷） ----------
+   2026-11-20：個体が多いと重いので、最初はチェックした個体だけを出す。検索するか「全部出す」を押したら PICK_MAX 頭まで並べる。
+   チェックした個体は、検索に合わなくてもいつも上に出す。 */
+const pickKey = b => [b.code, b.species, b.line, b.locality].join(" ").toLowerCase();
+function pickState(kind) { if (!state.pick || state.pick.kind !== kind) state.pick = { kind, q: "", all: false }; return state.pick; }
+function pickRows(kind, cands, picked, rowFn) {
+  const p = pickState(kind), q = p.q.trim().toLowerCase(), set = new Set(picked);
+  const sel = cands.filter(b => set.has(b.id));
+  const hit = p.all || q ? cands.filter(b => !set.has(b.id) && (!q || pickKey(b).includes(q))) : [];
+  const rest = hit.slice(0, PICK_MAX);
+  const note = !p.all && !q ? `${cands.length}頭から選べます。名前・種別で検索するか、<button class="btn small" type="button" data-pickall="${kind}">全部出す</button> を押してください。`
+    : hit.length > rest.length ? `合う個体が${hit.length}頭あるので、${PICK_MAX}頭まで出しています。検索でしぼってください。`
+    : q && !hit.length ? "検索に合う個体はありません。" : "";
+  return { rows: sel.map(b => rowFn(b, true)).join("") + rest.map(b => rowFn(b, false)).join(""), note };
+}
+const pickSearchHtml = (kind, style) => `<input type="search" id="${kind}Search" placeholder="名前・種別で絞り込み" value="${esc(pickState(kind).q)}" style="${style}">`;
+// 検索・「全部出す」のあと：表の中身だけを作り直す（ほかの入力欄はそのまま）
+function pickRefresh(kind) {
+  const body = $(kind + "Rows");
+  if (!body) return;
+  const picked = [...document.querySelectorAll(`.${kind}-pick:checked`)].map(c => c.dataset.id);
+  const r = PICKERS[kind](picked);
+  body.innerHTML = r.rows;
+  $(kind + "Note").innerHTML = r.note;
+}
+const PICKERS = {
+  sl: picked => pickRows("sl", saleCands(), picked, saleRow),
+  ls: picked => pickRows("ls", listingCands(), picked, listingRow),
+  lb: picked => pickRows("lb", labelCands(), picked, labelRow),
+  sp: picked => pickRows("sp", spCands(), picked, spRow),
+};
+
+function saleCands() {
   const first = state.beetles.find(b => b.id === state.saleIds[0]);
   // 選んだ個体を先頭に、同じ種別、それ以外の順に並べる
-  const cands = state.beetles.filter(b => !isArchived(b)).sort((a, c) =>
+  return state.beetles.filter(b => !isArchived(b)).sort((a, c) =>
     (state.saleIds.includes(c.id) - state.saleIds.includes(a.id)) ||
     ((c.species === first?.species) - (a.species === first?.species)) ||
-    (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+    jaCmp(a.code || "", c.code || ""));
+}
+const saleRow = (b, on) => `<tr>
+          <td><input type="checkbox" class="sl-pick" id="sl_${esc(b.id)}" data-id="${esc(b.id)}"${on ? " checked" : ""}></td>
+          <td><label for="sl_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label></td>
+          <td>${esc(b.species || "")}</td>
+          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
+          <td>${esc(b.stage || "")}</td>
+          <td class="r num">${b.sizeMm ? b.sizeMm + "mm" : ""}</td>
+        </tr>`;
+function saleForm() {
+  const pk = PICKERS.sl(state.saleIds);
   return `
     <div class="panel-head">
       <h2 id="panelTitle">生体販売を記録</h2>
@@ -1276,19 +1370,13 @@ function saleForm() {
       </div>
       <p class="hint">ペア販売・複数引き販売は、一緒に売る個体にチェックを入れてください。金額は全部まとめた値段を1回入れます。金額を入れると、収支に「生体販売」として記録されます。</p>
       <div class="row" style="justify-content:space-between">
-        <input type="search" id="slSearch" placeholder="名前・種別で絞り込み" style="flex:1 1 180px;max-width:260px">
+        ${pickSearchHtml("sl", "flex:1 1 180px;max-width:260px")}
         <span class="hint" id="slCount"></span>
       </div>
+      <p class="hint pick-note" id="slNote">${pk.note}</p>
       <div class="tbl-wrap sale-list"><table class="tbl bulk-tbl">
         <thead><tr><th></th><th>名前</th><th>種別</th><th class="c">性別</th><th>状態</th><th class="r">体長</th></tr></thead>
-        <tbody>${cands.map(b => `<tr data-search="${esc([b.code, b.species, b.line, b.locality].join(" ").toLowerCase())}">
-          <td><input type="checkbox" class="sl-pick" id="sl_${esc(b.id)}" data-id="${esc(b.id)}"${state.saleIds.includes(b.id) ? " checked" : ""}></td>
-          <td><label for="sl_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label></td>
-          <td>${esc(b.species || "")}</td>
-          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
-          <td>${esc(b.stage || "")}</td>
-          <td class="r num">${b.sizeMm ? b.sizeMm + "mm" : ""}</td>
-        </tr>`).join("")}</tbody>
+        <tbody id="slRows">${pk.rows}</tbody>
       </table></div>
       <div class="row end"><button class="btn" type="button" data-sale-care>飼育記録シート</button><button class="btn" type="button" data-sale-listing>ヤフオク出品文を作る</button><button class="btn primary" type="submit" id="slSubmit">記録する</button></div>
       <p class="hint">ヤフオクに出すときは、先に「ヤフオク出品文を作る」でタイトルと説明文を作り、「出品中」にしておけます。落札されたら、もう一度「販売する」で金額を入れて記録してください。</p>
@@ -1318,7 +1406,7 @@ const HIST_FILTERS = [
 const sizeThreshold = sp => {
   const v = (state.masters.sizeThresholds || {})[sp];
   if (v !== undefined && v !== null && v !== "") return Number(v) || null;
-  return /タランドゥス/.test(sp || "") ? 90 : null;
+  return !BETA && /タランドゥス/.test(sp || "") ? 90 : null;
 };
 const avgOf = a => a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length * 10) / 10 : null;
 // 同じ親の子（履歴に移した個体も数える。削除した個体は数えられない）の成績
@@ -1444,7 +1532,7 @@ function renderHistory() {
   const f = HIST_FILTERS.find(x => x.key === state.histFilter) || HIST_FILTERS[0];
   const q = state.histQ.trim().toLowerCase();
   const list = all.filter(f.test).filter(b => !q || [b.code, b.species, b.line, b.locality, b.archive?.to, b.archive?.memo].join(" ").toLowerCase().includes(q))
-    .sort((a, c) => (c.archive?.date || "").localeCompare(a.archive?.date || "") || (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+    .sort((a, c) => (c.archive?.date || "").localeCompare(a.archive?.date || "") || jaCmp(a.code || "", c.code || ""));
   v.innerHTML = `
     <div class="stages">
       <div class="stage-cell"><span class="label">死亡</span><span class="value">${all.filter(HIST_FILTERS[1].test).length}<small>頭</small></span></div>
@@ -1824,7 +1912,27 @@ ${LINE}
 タランドゥスオオツヤクワガタ
 タランドゥス
 Mesotopus tarandus`;
-const listingTemplate = () => state.masters.listingTemplate || DEFAULT_LISTING;
+// ベータ版のはじめの定型文（ブランド・種類・えさの話は入れない）
+const BETA_LISTING = `商品説明をご覧いただきありがとうございます。
+
+{{出品生体}}
+
+${LINE}
+【個体・ブリードについて】
+${LINE}
+
+{{同腹実績}}
+
+（ここに個体の魅力や飼育環境を書いてください）
+
+${LINE}
+【お取引に関する注意事項】
+${LINE}
+
+（ここに発送・お支払いなどの注意事項を書いてください）
+
+最後までお読みいただきありがとうございました。`;
+const listingTemplate = () => state.masters.listingTemplate || (BETA ? BETA_LISTING : DEFAULT_LISTING);
 const TITLE_MAX = 65;
 const jpDate = d => { const m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${+m[1]}年${+m[2]}月${+m[3]}日` : ""; };
 // 羽化から半年以内なら「新成虫」
@@ -1842,7 +1950,7 @@ function listingTitle(list, opt) {
   const par = sameAll(l, b => `${b.fatherSize ?? ""}|${b.motherSize ?? ""}`);
   const [fs, ms] = par ? par.split("|") : ["", ""];
   const seg = [[size, kind].filter(Boolean).join(" "), sp, line, opt.newAdult ? "新成虫" : "",
-    fs || ms ? `種親${fs ? "♂" + fs : ""}${fs && ms ? "×" : ""}${ms ? "♀" + ms : ""}` : "", sameAll(l, b => b.locality || ""), "Dorcus Laboratory"].filter(Boolean);
+    fs || ms ? `種親${fs ? "♂" + fs : ""}${fs && ms ? "×" : ""}${ms ? "♀" + ms : ""}` : "", sameAll(l, b => b.locality || ""), brandText()].filter(Boolean);
   while (seg.length > 2 && seg.join(" ").length > TITLE_MAX) seg.pop();
   return seg.join(" ").slice(0, TITLE_MAX);
 }
@@ -1880,12 +1988,23 @@ function listingText(list, opt) {
   t = opt.additive ? t.replace(/\[\/?添加剤\]/g, "") : t.replace(/\[添加剤\][\s\S]*?\[\/添加剤\]/g, "");
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
-function listingForm() {
+function listingCands() {
   const first = state.beetles.find(b => b.id === state.listingIds[0]);
-  const cands = state.beetles.filter(b => !isArchived(b)).sort((a, c) =>
+  return state.beetles.filter(b => !isArchived(b)).sort((a, c) =>
     (state.listingIds.includes(c.id) - state.listingIds.includes(a.id)) ||
     ((c.species === first?.species) - (a.species === first?.species)) ||
-    (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+    jaCmp(a.code || "", c.code || ""));
+}
+const listingRow = (b, on) => `<tr>
+          <td><input type="checkbox" class="ls-pick" id="ls_${esc(b.id)}" data-id="${esc(b.id)}"${on ? " checked" : ""}></td>
+          <td><label for="ls_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label>${b.status === "出品中" ? ' <span class="pill in">出品中</span>' : ""}</td>
+          <td>${esc(b.species || "")}</td>
+          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
+          <td>${esc(b.stage || "")}</td>
+          <td class="r num">${b.sizeMm ? b.sizeMm + "mm" : ""}</td>
+        </tr>`;
+function listingForm() {
+  const pk = PICKERS.ls(state.listingIds);
   return `
     ${backButton()}
     <div class="panel-head">
@@ -1895,19 +2014,13 @@ function listingForm() {
     <form id="listingForm" class="box">
       <p class="hint">ペア・複数頭のときは、一緒に出す個体にチェックを入れてください。記録から作った文章は、下の欄でそのまま直せます。チェックや下の選択を変えると、文章は作り直されます（直した所は消えます）。アプリから出品はしません。コピーしてヤフオクに貼ってください。</p>
       <div class="row" style="justify-content:space-between">
-        <input type="search" id="lsSearch" placeholder="名前・種別で絞り込み" style="flex:1 1 180px;max-width:260px">
+        ${pickSearchHtml("ls", "flex:1 1 180px;max-width:260px")}
         <span class="hint" id="lsCount"></span>
       </div>
+      <p class="hint pick-note" id="lsNote">${pk.note}</p>
       <div class="tbl-wrap sale-list"><table class="tbl bulk-tbl">
         <thead><tr><th></th><th>名前</th><th>種別</th><th class="c">性別</th><th>状態</th><th class="r">体長</th></tr></thead>
-        <tbody>${cands.map(b => `<tr data-search="${esc([b.code, b.species, b.line, b.locality].join(" ").toLowerCase())}">
-          <td><input type="checkbox" class="ls-pick" id="ls_${esc(b.id)}" data-id="${esc(b.id)}"${state.listingIds.includes(b.id) ? " checked" : ""}></td>
-          <td><label for="ls_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label>${b.status === "出品中" ? ' <span class="pill in">出品中</span>' : ""}</td>
-          <td>${esc(b.species || "")}</td>
-          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
-          <td>${esc(b.stage || "")}</td>
-          <td class="r num">${b.sizeMm ? b.sizeMm + "mm" : ""}</td>
-        </tr>`).join("")}</tbody>
+        <tbody id="lsRows">${pk.rows}</tbody>
       </table></div>
       <div class="row">
         <label class="check"><input type="checkbox" id="lsNew"> 「新成虫」を入れる</label>
@@ -2024,7 +2137,8 @@ async function removeRec(name, id, msg) {
 /* ---------- まとめてえさ交換 ---------- */
 function bulkForm() {
   // 成虫はまとめてえさ交換の対象にしない（改善⑨）
-  const list = state.bulkIds.map(id => state.beetles.find(b => b.id === id)).filter(b => b && !isAdult(b));
+  const byId = new Map(state.beetles.map(b => [b.id, b]));
+  const list = state.bulkIds.map(id => byId.get(id)).filter(b => b && !isAdult(b));
   return `
     <div class="panel-head">
       <h2 id="panelTitle">まとめてえさ交換</h2>
@@ -2160,9 +2274,14 @@ function renderBeetles() {
       // 空欄は並べ替えの向きに関係なく最後に置く
       if (x === "" || x === null || x === undefined) return (y === "" || y === null || y === undefined) ? 0 : 1;
       if (y === "" || y === null || y === undefined) return -1;
-      const r = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "ja", { numeric: true });
-      return r * state.sort.dir || (a.code || "").localeCompare(c.code || "", "ja", { numeric: true });
+      const r = typeof x === "number" && typeof y === "number" ? x - y : jaCmp(String(x), String(y));
+      return r * state.sort.dir || jaCmp(a.code || "", c.code || "");
     });
+  // 一覧は最初 LIST_PAGE 頭まで出し、「もっと見る」で続きを出す（2026-11-20。数が多いと重いため）。絞り込み・検索・種別を変えたら最初に戻す
+  const listKey = [state.filter, state.species, q].join("|");
+  if (state.listKey !== listKey) { state.listKey = listKey; state.listLimit = LIST_PAGE; }
+  const limit = state.listLimit || LIST_PAGE, page = shown.slice(0, limit);
+  const moreHtml = shown.length > page.length ? `<div class="list-more"><span class="hint">${shown.length}頭のうち${page.length}頭を表示中</span><button class="btn" type="button" data-listmore>もっと見る（残り${shown.length - page.length}頭）</button></div>` : "";
   state.lastShown = shown.filter(b => !isArchived(b)).map(b => b.id);
   $("bulkBtn").hidden = !shown.some(b => !isArchived(b) && !isAdult(b));
   $("labelBtn").hidden = !state.lastShown.length;
@@ -2178,13 +2297,13 @@ function renderBeetles() {
     const arrow = k => state.sort.key === k ? (state.sort.dir > 0 ? " ▲" : " ▼") : "";
     $("list").innerHTML = `<div class="box" style="padding:0"><div class="tbl-wrap"><table class="tbl beetle-tbl">
       <thead><tr>${cols.map(c => `<th class="${c.cls || ""}" aria-sort="${state.sort.key === c.key ? (state.sort.dir > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="th-sort" data-sort="${c.key}">${c.label}${arrow(c.key)}</button></th>`).join("")}</tr></thead>
-      <tbody>${shown.map(b => `<tr data-open-row="${esc(b.id)}">${cols.map(c => `<td class="${c.cls || ""}">${c.cell(b)}</td>`).join("")}</tr>`).join("")}</tbody>
+      <tbody>${page.map(b => `<tr data-open-row="${esc(b.id)}">${cols.map(c => `<td class="${c.cls || ""}">${c.cell(b)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div></div>
-    <p class="hint">${shown.length}頭を表示中。見出しを押すと並べ替えます（もう一度押すと逆順）。行を押すと詳しい画面が開きます。</p>`;
+    <p class="hint">${moreHtml ? `${shown.length}頭のうち${page.length}頭を表示中` : `${shown.length}頭を表示中`}。見出しを押すと並べ替えます（もう一度押すと逆順。並べ替えは全部の個体が対象です）。行を押すと詳しい画面が開きます。</p>${moreHtml}`;
     return;
   }
 
-  $("list").innerHTML = shown.map(b => {
+  $("list").innerHTML = page.map(b => {
     const w = latestWeight(b);
     const g = stageGroup(b.stage);
     const foot = isArchived(b)
@@ -2204,7 +2323,7 @@ function renderBeetles() {
       </div>
       <div class="card-foot">${foot}</div>
     </button>`;
-  }).join("");
+  }).join("") + moreHtml;
 }
 
 const PAIR_FILTERS = [
@@ -2265,12 +2384,17 @@ function chart(b) {
 
 /* ---------- panel ---------- */
 function openPanel(id, mode = "view") {
-  state.openId = id; state.mode = mode; state.draftImage = undefined; state.backTo = null; state.copyFrom = null; state.mixDraft = null;
+  state.openId = id; state.mode = mode; state.draftImage = undefined; state.backTo = null; state.copyFrom = null; state.mixDraft = null; state.pick = null;
+  if ($("overlay").hidden) state.openVer = state.dataVer || 0; // 開いたときの印。閉じるまでに記録が変わらなければ、一覧は描き直さない
   $("overlay").hidden = false;
   renderPanel();
   $("panel").scrollTop = 0;
 }
-function closePanel() { state.openId = null; state.pendingImport = null; state.pendingUpdate = null; state.csvImp = null; state.backTo = null; state.dirty = false; $("overlay").hidden = true; render(); }
+// 閉じるとき：保存・記録・削除などで記録が変わったときだけ一覧を描き直す（見ただけなら描き直さない。2026-11-20、個体が多いと重いため）
+function closePanel() {
+  state.openId = null; state.pendingImport = null; state.pendingUpdate = null; state.csvImp = null; state.backTo = null; state.dirty = false; $("overlay").hidden = true;
+  if ((state.dataVer || 0) !== state.openVer) render();
+}
 // 入力画面：外側のクリックでは閉じない（×・キャンセル・Escだけで閉じる）
 const INPUT_MODES = ["edit", "new", "pairEdit", "pairNew", "kids", "bulk", "sale", "money", "stock", "mix", "stale", "listing", "sp", "sheet"];
 // ここに入力すると「まだ保存していない」とみなすフォーム
@@ -2525,8 +2649,9 @@ function readExchangeRows(old) {
 }
 
 // 親の欄の候補：その性別の個体を、名前順に（種別・サイズ・履歴なら理由も添える）
-const parentOptions = (list, sex) => list.filter(x => x.sex === sex && x.code)
-  .sort((a, c) => a.code.localeCompare(c.code, "ja", { numeric: true }))
+// 親の候補：同じ性別、種別を選んでいればその種類だけ（2026-11-20。個体が多いと候補が多すぎて重いため）。種別が空なら全部
+const parentOptions = (list, sex, sp) => list.filter(x => x.sex === sex && x.code && (!sp || x.species === sp))
+  .sort((a, c) => jaCmp(a.code, c.code))
   .map(x => `<option value="${esc(x.code)}">${esc([x.species, x.sizeMm ? x.sizeMm + "mm" : "", isArchived(x) ? "（" + archiveReason(x) + "）" : ""].filter(Boolean).join(" "))}</option>`).join("");
 function editForm(b) {
   const src = !b && state.copyFrom ? state.beetles.find(x => x.id === state.copyFrom) : null;
@@ -2619,8 +2744,8 @@ function editForm(b) {
       <datalist id="storageList">${options("storage")}</datalist>
       <datalist id="collectStateList">${options("collectState")}</datalist>
       <!-- ♂親の候補は♂の個体だけ、♀親の候補は♀の個体だけ（販売・死亡などで履歴に移した個体も出す） -->
-      <datalist id="fatherList">${parentOptions(others, "♂")}</datalist>
-      <datalist id="motherList">${parentOptions(others, "♀")}</datalist>
+      <datalist id="fatherList">${parentOptions(others, "♂", v.species)}</datalist>
+      <datalist id="motherList">${parentOptions(others, "♀", v.species)}</datalist>
       <p class="hint">種別・えさ・容器の選択肢は「種類の登録」タブで追加できます。親の欄に登録済みの個体名を入れると、その個体の体長が自動で入ります。</p>
       <div class="row end">
         <button class="btn" type="button" data-cancel>キャンセル</button>
@@ -3054,7 +3179,7 @@ function careHtml(b) {
   const ex = exchangeLogs(b).slice(-6);
   const info = [b.species, b.line, b.locality, typeof b.sizeMm === "number" ? b.sizeMm.toFixed(1) + "mm" : "", b.eclosionDate ? "羽化 " + fmtDate(b.eclosionDate) : "", isAdult(b) && b.feedStartDate ? "後食 " + fmtDate(b.feedStartDate) : ""].filter(Boolean);
   return `<article class="sheet ped care">
-    <div class="care-head">${brandLogo()}<div><div class="care-title">飼育記録　No. ${esc(nameOf(b))}${b.sex === "♂" || b.sex === "♀" ? " " + b.sex : ""}</div><div class="brand-name">${BRAND}</div></div></div>
+    <div class="care-head">${brandLogo()}<div><div class="care-title">飼育記録　No. ${esc(nameOf(b))}${b.sex === "♂" || b.sex === "♀" ? " " + b.sex : ""}</div><div class="brand-name">${esc(brandText())}</div></div></div>
     <div>${esc(info.join(" ・ "))}</div>
     <div class="care-grid">
       <table><tr><th colspan="2">血統</th></tr>
@@ -3210,7 +3335,7 @@ function updateYear() {
 /* ---------- 売り物の一覧・販売札・売れた記録の一覧（改善⑳㉕） ---------- */
 // 価格は印刷の画面でそのつど入れる（保存しない）。ペア・複数引きは「組」にして価格を1つにする
 const yenMark = n => n === "" || n === null || n === undefined || isNaN(+n) ? "" : "¥" + Math.round(+n).toLocaleString("ja-JP");
-const spCands = () => state.beetles.filter(b => !isArchived(b)).sort((a, c) => (c.status === "出品中") - (a.status === "出品中") || (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+const spCands = () => state.beetles.filter(b => !isArchived(b)).sort((a, c) => (c.status === "出品中") - (a.status === "出品中") || jaCmp(a.code || "", c.code || ""));
 const spGroupOf = id => state.spGroups.find(g => g.includes(id));
 // 選んだ個体を、組ごとにまとめた並びにする（組は最初の個体の位置に出す）
 function spItems() {
@@ -3227,7 +3352,7 @@ function spItems() {
 }
 const groupWord = list => list.length === 2 && list.some(b => b.sex === "♂") && list.some(b => b.sex === "♀") ? "ペア" : `${list.length}頭`;
 const sizeOf = b => typeof b.sizeMm === "number" ? b.sizeMm.toFixed(1) + "mm" : "";
-const brandHeadHtml = (title, sub = "") => `<div class="slist-head">${brandLogo()}<div><div style="font-size:15pt;font-weight:700">${title}</div><div class="brand-name">${BRAND}</div></div>${sub ? `<div class="k" style="margin-left:auto">${esc(sub)}</div>` : ""}</div>`;
+const brandHeadHtml = (title, sub = "") => `<div class="slist-head">${brandLogo()}<div><div style="font-size:15pt;font-weight:700">${title}</div><div class="brand-name">${esc(brandText())}</div></div>${sub ? `<div class="k" style="margin-left:auto">${esc(sub)}</div>` : ""}</div>`;
 function stockListHtml(items) {
   const rows = items.map(it => it.list.map((b, i) => `<tr${i === 0 && it.list.length > 1 ? ' class="grp-top"' : ""}>
       <td>${esc(nameOf(b))}</td><td>${esc(b.species || "")}</td><td>${b.sex === "♂" || b.sex === "♀" ? b.sex : ""}</td><td>${esc(sizeOf(b))}</td><td>${esc(b.line || "")}</td><td>${esc(b.locality || "")}</td><td>${esc(shortDate(b.eclosionDate))}</td>
@@ -3247,7 +3372,7 @@ function tagHtml(it) {
   const [fs, ms] = par ? par.split("|") : ["", ""];
   const parText = fs || ms ? `種親 ${fs ? "♂" + fs : ""}${fs && ms ? " × " : ""}${ms ? "♀" + ms : ""}` : "";
   return `<div class="stag">
-    <div class="stag-head">${brandLogo()}<div><div class="stag-sp">${esc(sp)}${one ? "" : "　" + groupWord(l)}</div><div class="brand-name">${BRAND}</div></div></div>
+    <div class="stag-head">${brandLogo()}<div><div class="stag-sp">${esc(sp)}${one ? "" : "　" + groupWord(l)}</div><div class="brand-name">${esc(brandText())}</div></div></div>
     <div class="stag-size">${esc(sizes)}</div>
     <div>${esc(lineLoc)}</div>
     <div class="k">${[ecl ? "羽化 " + ecl : "", parText].filter(Boolean).map(esc).join(" ／ ")}</div>
@@ -3272,18 +3397,18 @@ function soldListHtml(from, to) {
     <tbody>${rows.map(m => `<tr><td>${esc(fmtDate(m.date))}</td><td>${(soldList(m).length ? soldList(m) : [m.item || ""]).map(esc).join("<br>")}</td><td>${esc(m.saleType || "")}</td><td class="price">${esc(yenMark(m.amount))}</td></tr>`).join("") || '<tr><td colspan="4">この期間の販売はありません。</td></tr>'}</tbody>
     <tfoot><tr><td colspan="3">合計（${rows.length}件）</td><td class="price">${esc(yenMark(total))}</td></tr></tfoot></table></div>`;
 }
-function spPanel() {
-  const k = state.spKind, cands = spCands(), y = today().slice(0, 4);
-  const rows = cands.map(b => {
+function spRow(b, on) {
     const g = spGroupOf(b.id), key = g ? g[0] : b.id, first = !g || g[0] === b.id;
     return `<tr class="sp-row${g ? " grp" : ""}">
-      <td><input type="checkbox" class="sp-pick" id="sp_${esc(b.id)}" data-id="${esc(b.id)}"${state.spIds.includes(b.id) ? " checked" : ""}></td>
+      <td><input type="checkbox" class="sp-pick" id="sp_${esc(b.id)}" data-id="${esc(b.id)}"${on ? " checked" : ""}></td>
       <td><label for="sp_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label>${b.status === "出品中" ? ' <span class="pill in">出品中</span>' : ""}</td>
       <td>${esc(b.species || "")}</td><td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td><td class="r num">${esc(sizeOf(b))}</td>
       <td class="hint">${g ? `組 ${state.spGroups.indexOf(g) + 1}` : ""}</td>
       <td>${first ? `<input type="number" class="sp-price" data-key="${esc(key)}" min="0" step="100" inputmode="numeric" value="${esc(state.spPrices[key] ?? "")}" placeholder="${g ? "組の価格" : "例 30000"}">` : '<span class="hint">↑ 組の価格</span>'}</td>
     </tr>`;
-  }).join("");
+}
+function spPanel() {
+  const k = state.spKind, y = today().slice(0, 4), pk = k === "sold" ? null : PICKERS.sp(state.spIds);
   return `
     <div class="panel-head">
       <h2 id="panelTitle">販売の印刷</h2>
@@ -3303,9 +3428,11 @@ function spPanel() {
         <button class="btn small" type="button" data-spungroup>選んだ個体の組を解く</button>
         <span class="hint" id="spCount"></span>
       </div>
+      <div class="row">${pickSearchHtml("sp", "flex:1 1 180px;max-width:260px")}</div>
+      <p class="hint pick-note" id="spNote">${pk.note}</p>
       <div class="tbl-wrap sale-list"><table class="tbl bulk-tbl">
         <thead><tr><th></th><th>名前</th><th>種別</th><th class="c">性別</th><th class="r">体長</th><th>組</th><th>価格（円）</th></tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody id="spRows">${pk.rows}</tbody>
       </table></div>`}
       <div class="row end"><button class="btn primary" type="button" data-spprint>印刷する</button></div>
       <p class="hint">${k === "tags" ? "印刷画面では、用紙サイズ「A4」、倍率「100」、余白「なし」にしてください。" : "印刷画面では、用紙サイズ「A4」、倍率「100」にしてください。"}「ヘッダーとフッター」はオフにします。</p>
@@ -3376,7 +3503,7 @@ function saleLabelCell(b, o) {
   const par = [b.fatherSize ? "♂" + b.fatherSize + "mm" : "", b.motherSize ? "♀" + b.motherSize + "mm" : ""].filter(Boolean).join(" × ");
   const big = [f.size ? ["大きさ", sz] : null, f.eclosion ? ["羽化日", shortDate(b.eclosionDate)] : null, f.head && b.headWidth ? ["頭幅", b.headWidth + "mm"] : null].filter(Boolean);
   return `<div class="lbl">
-    <div class="slb-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}${f.logo ? `<span class="brand-name">${BRAND}</span>${brandLogo()}` : ""}</div>
+    <div class="slb-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}${f.logo ? `<span class="brand-name">${esc(brandText())}</span>${brandLogo()}` : ""}</div>
     <div class="lbl-sp">${esc([b.species, ...(f.lineLoc ? [b.line, b.locality] : [])].filter(Boolean).join(" ・ "))}</div>
     ${big.length ? `<div class="slb-big">${big.map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${esc(v || "")}</span></div>`).join("")}</div>` : ""}
     ${f.parents && par ? `<div class="slb-sub">種親 ${esc(par)}</div>` : ""}
@@ -3428,9 +3555,20 @@ const labelPicked = () => [...document.querySelectorAll(".lb-pick:checked")].map
 const lbBlankCount = () => Math.min(200, Math.max(0, Math.round(+($("lbBlank")?.value || 0))));
 const labelItems = () => [...labelPicked(), ...Array(lbBlankCount()).fill("BLANK")];
 
+function labelCands() {
+  const ids = new Set(state.labelIds);
+  return state.beetles.filter(b => !isArchived(b) || ids.has(b.id)).sort((a, c) =>
+    (ids.has(c.id) - ids.has(a.id)) || jaCmp(a.code || "", c.code || ""));
+}
+const labelRow = (b, on) => `<tr>
+          <td><input type="checkbox" class="lb-pick" id="lb_${esc(b.id)}" data-id="${esc(b.id)}"${on ? " checked" : ""}></td>
+          <td><label for="lb_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label></td>
+          <td>${esc(b.species || "")}</td>
+          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
+          <td>${esc(isArchived(b) ? archiveReason(b) : b.stage || "")}</td>
+        </tr>`;
 function labelsForm() {
-  const cands = state.beetles.filter(b => !isArchived(b) || state.labelIds.includes(b.id)).sort((a, c) =>
-    (state.labelIds.includes(c.id) - state.labelIds.includes(a.id)) || (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+  const pk = PICKERS.lb(state.labelIds);
   return `
     ${backButton()}
     <div class="panel-head">
@@ -3449,18 +3587,13 @@ function labelsForm() {
       </div>
       <div class="row" style="justify-content:space-between">
         <label class="check"><input type="checkbox" id="lbAll"> 全部選ぶ</label>
-        <input type="search" id="lbSearch" placeholder="名前・種別で絞り込み" style="flex:1 1 160px;max-width:240px">
+        ${pickSearchHtml("lb", "flex:1 1 160px;max-width:240px")}
         <span class="hint" id="lbCount"></span>
       </div>
+      <p class="hint pick-note" id="lbNote">${pk.note}</p>
       <div class="tbl-wrap sale-list"><table class="tbl bulk-tbl">
         <thead><tr><th></th><th>名前</th><th>種別</th><th class="c">性別</th><th>状態</th></tr></thead>
-        <tbody>${cands.map(b => `<tr data-search="${esc([b.code, b.species, b.line, b.locality].join(" ").toLowerCase())}">
-          <td><input type="checkbox" class="lb-pick" id="lb_${esc(b.id)}" data-id="${esc(b.id)}"${state.labelIds.includes(b.id) ? " checked" : ""}></td>
-          <td><label for="lb_${esc(b.id)}" class="num strong bk-name">${esc(nameOf(b))}</label></td>
-          <td>${esc(b.species || "")}</td>
-          <td class="c">${sexMark(b.sex) || '<span class="hint">—</span>'}</td>
-          <td>${esc(isArchived(b) ? archiveReason(b) : b.stage || "")}</td>
-        </tr>`).join("")}</tbody>
+        <tbody id="lbRows">${pk.rows}</tbody>
       </table></div>
       <div class="row end"><button class="btn primary" type="button" id="lbPrint" data-printlabels>印刷する</button></div>
       <p class="hint">印刷画面では、用紙サイズを「A4」、倍率を「100」（既定。「ページに合わせる」は使わない）、余白を「なし」にしてください。「ヘッダーとフッター」はオフにします。</p>
@@ -3516,7 +3649,7 @@ function backupPanel() {
   const imp = state.pendingImport;
   return `
     <div class="panel-head">
-      <h2 id="panelTitle">バックアップ・同期</h2>
+      <h2 id="panelTitle">${BETA ? "バックアップ" : "バックアップ・同期"}</h2>
       <button class="close" type="button" data-close aria-label="閉じる">×</button>
     </div>
     ${syncBoxHtml()}
@@ -3694,7 +3827,9 @@ $("logoFile").addEventListener("change", async e => {
 });
 // 販売用の印刷物の見出し：ロゴ画像（あれば）とブランド名
 const brandLogo = () => state.masters.logo ? `<img class="brand-logo" src="${state.masters.logo}" alt="">` : "";
-const BRAND = "Dorcus Laboratory";
+const BRAND = BETA ? "" : "Dorcus Laboratory";
+// 販売用の印刷物・出品文のタイトルに出す名前（ベータ版は、種類の登録で入れたブリーダー名。無ければ出さない）
+const brandText = () => BRAND || state.masters.breederName || "";
 
 /* ---------- backup ---------- */
 function download(filename, text, type) {
@@ -3710,7 +3845,7 @@ const toCsv = rows => "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n
 const stamp = () => { const d = new Date(); return `${localDate(d).replace(/-/g, "")}-${pad(d.getHours())}${pad(d.getMinutes())}`; };
 
 function exportData(kind) {
-  const bs = state.beetles.slice().sort((a, c) => (a.code || "").localeCompare(c.code || "", "ja", { numeric: true }));
+  const bs = state.beetles.slice().sort((a, c) => jaCmp(a.code || "", c.code || ""));
   if (kind === "json") {
     download(`kuwagata-backup-${stamp()}.json`, JSON.stringify({ app: "kuwagata-daicho", format: 4, exportedAt: new Date().toISOString(), beetles: bs, pairs: state.pairs, money: state.money, stock: state.stock, masters: state.masters }, null, 2), "application/json");
     meta.set("lastBackup", new Date().toISOString());
@@ -3854,8 +3989,8 @@ function updBoxHtml() {
   if (!u) {
     return `<div class="box">
       <h3 class="section-title">写真から読み取った値を取り込む</h3>
-      <p class="hint">AI担当が写真（ラベル・体重計）から作った「取り込み用の文章」を、ここに貼り付けるか、ファイルで選びます。まず内容の確認が出て、チェックを入れたものだけが台帳に入ります。入れられるのは、蛹化日・蛹化時の体重・羽化日・体長の4つです。</p>
-      <textarea id="updText" rows="4" style="font-family:var(--f-data);font-size:13px" placeholder='{"items":[{"code":"M.T2026B_20","pupaWeight":34.8}]}'></textarea>
+      <p class="hint">${BETA ? "AI（ChatGPT や Claude など）" : "AI担当"}が写真（ラベル・体重計）から作った「取り込み用の文章」を、ここに貼り付けるか、ファイルで選びます。まず内容の確認が出て、チェックを入れたものだけが台帳に入ります。入れられるのは、蛹化日・蛹化時の体重・羽化日・体長の4つです。</p>
+      <textarea id="updText" rows="4" style="font-family:var(--f-data);font-size:13px" placeholder='{"items":[{"code":"${BETA ? "OK-101" : "M.T2026B_20"}","pupaWeight":34.8}]}'></textarea>
       <div class="row"><button class="btn" type="button" data-upd-check>内容を確認する</button><button class="btn" type="button" data-upd-file>ファイルを選ぶ</button></div>
     </div>`;
   }
@@ -4173,7 +4308,12 @@ document.addEventListener("click", e => {
   if (t.dataset.view) { state.view = t.dataset.view; return render(); }
   if (t.dataset.listmode) { state.listMode = t.dataset.listmode; rememberListView(); return render(); }
   if (t.id === "bulkBtn" || t.dataset.bulkdue) {
-    state.bulkIds = t.dataset.bulkdue ? t.dataset.bulkdue.split(",") : state.lastShown.slice();
+    const ids = t.dataset.bulkdue ? t.dataset.bulkdue.split(",") : state.lastShown.slice();
+    // 一覧で絞り込んだ個体を全部並べる。多すぎると重いので PICK_MAX 頭を超えるときは止める（2026-11-20）
+    const byId = new Map(state.beetles.map(b => [b.id, b]));
+    const n = ids.filter(id => byId.get(id) && !isAdult(byId.get(id))).length;
+    if (n > PICK_MAX) return toast(`まとめてえさ交換の対象が${n}頭あります。${PICK_MAX}頭以下になるように、絞り込みや検索でしぼってから開いてください`, 6000);
+    state.bulkIds = ids;
     return openPanel(null, "bulk");
   }
   if (t.dataset.sort) {
@@ -4196,6 +4336,8 @@ document.addEventListener("click", e => {
   }
   if (t.dataset.openpair) return openPanel(t.dataset.openpair, "pair");
   if (t.dataset.filter) { state.filter = t.dataset.filter; return render(); }
+  if (t.dataset.pickall) { const k = t.dataset.pickall; pickState(k).all = true; pickRefresh(k); if (k === "lb") updateLabels(); return; }
+  if (t.hasAttribute("data-listmore")) { state.listLimit = (state.listLimit || LIST_PAGE) + LIST_PAGE; return render(); }
   if (t.dataset.pfilter) { state.pairFilter = t.dataset.pfilter; return render(); }
   if ((t.id === "addBtn" || t.hasAttribute("data-add")) && state.view === "history") { state.saleIds = []; state.saleTypeTouched = false; return openPanel(null, "sale"); }
   if (t.id === "addBtn" || t.hasAttribute("data-add")) return openPanel(null, { pairs: "pairNew", money: "money", stock: "stock", mixes: "mix" }[state.view] || "new");
@@ -4335,6 +4477,9 @@ document.addEventListener("click", e => {
     save(b).then(ok => ok && toast("飼育中に戻しました（収支の記録はそのまま残ります）"));
     return;
   }
+  if (t.id === "termsBtn") return showTerms(false);
+  if (t.hasAttribute("data-terms-agree")) { meta.set("termsAgreed", TERMS_VER); $("terms").hidden = true; return; }
+  if (t.hasAttribute("data-terms-close")) { $("terms").hidden = true; return; }
   if (t.id === "backupBtn" || t.hasAttribute("data-backup")) return openPanel(null, "backup");
   if (t.hasAttribute("data-back")) return leavePanel(() => { const bt = state.backTo; state.backTo = null; openPanel(bt.id, bt.mode); });
   if (t.dataset.copy) {
@@ -4411,6 +4556,8 @@ document.addEventListener("click", e => {
     const pair = t.hasAttribute("data-labelkids") ? state.pairs.find(x => x.id === state.openId) : null;
     const one = t.dataset.label ? state.beetles.find(x => x.id === t.dataset.label) : null;
     const ids = pair ? childrenOf(pair).map(k => k.id) : one ? [one.id] : state.lastShown.slice();
+    // 一覧から開くと、出ている個体に全部チェックが入る。多すぎると重いので PICK_MAX 頭を超えるときは止める（2026-11-20）
+    if (ids.length > PICK_MAX) return toast(`一覧に${ids.length}頭あります。${PICK_MAX}頭以下になるように、絞り込みや検索でしぼってから開いてください`, 6000);
     openPanel(null, "labels");
     state.labelIds = ids;
     // 個体やペアの画面から開いたときは戻れるようにする
@@ -4485,24 +4632,15 @@ document.addEventListener("input", e => {
   markDirty(e.target);
   if (["kPrefix", "kStart", "kCount"].includes(e.target.id)) updateKidsPreview();
   if (e.target.id === "fCopyCount" || (e.target.id === "fCode" && $("fCopyCount"))) updateCopyPreview();
-  if (e.target.id === "lbSearch") {
-    const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll(".lb-pick").forEach(c => { const tr = c.closest("tr"); tr.hidden = !!q && !tr.dataset.search.includes(q) && !c.checked; });
-  }
+  // 個体を選ぶ表の検索：合う個体を PICK_MAX 頭まで出し直す（チェックした個体はいつも出す）
+  const pickKind = ["sl", "ls", "lb", "sp"].find(k => e.target.id === k + "Search");
+  if (pickKind) { pickState(pickKind).q = e.target.value; pickRefresh(pickKind); if (pickKind === "lb") updateLabels(); }
   if (e.target.id === "lsTitle") updateTitleLen();
   if (e.target.id === "lsX") updateXLen();
   if (e.target.id === "plBlank") updatePairLabels();
   if (e.target.id === "lbBlank") updateLabels();
   if (e.target.classList.contains("sp-price")) { state.spPrices[e.target.dataset.key] = e.target.value; updateSp(); }
   if (e.target.id === "fCode") e.target.dataset.auto = "0"; // 名前を自分で打ったら、種別を変えても上書きしない
-  if (e.target.id === "lsSearch") {
-    const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll(".ls-pick").forEach(c => { const tr = c.closest("tr"); tr.hidden = !!q && !tr.dataset.search.includes(q) && !c.checked; });
-  }
-  if (e.target.id === "slSearch") {
-    const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll(".sale-list tbody tr").forEach(tr => tr.hidden = !!q && !tr.dataset.search.includes(q) && !tr.querySelector(".sl-pick").checked);
-  }
   if (e.target.id === "histQ") {
     state.histQ = e.target.value; const pos = e.target.selectionStart;
     render(); $("histQ").focus(); $("histQ").setSelectionRange(pos, pos);
@@ -4576,6 +4714,12 @@ document.addEventListener("change", e => {
     if (!v || v === DEFAULT_LISTING) delete state.masters.listingTemplate; else state.masters.listingTemplate = e.target.value;
     saveMasters().then(ok => ok && toast("定型文を保存しました"));
     return;
+  }
+  // 種別を変えたら、♂親・♀親の候補をその種類だけにし直す（2026-11-20）
+  if (id === "fSpecies" && $("fatherList")) {
+    const others = state.beetles.filter(x => x.id !== state.openId || state.mode !== "edit");
+    $("fatherList").innerHTML = parentOptions(others, "♂", e.target.value);
+    $("motherList").innerHTML = parentOptions(others, "♀", e.target.value);
   }
   // 新しく登録するとき：種別を選んだら、その種類の番号の頭だけを入れる。続きの番号は自分で打つ（2026-11-16 あっきーさんの希望）
   // 名前を自分で打ち替えていたら入れない。頭を決めていない種類は、今までどおりの番号（K-012 など）に戻す
@@ -4984,6 +5128,12 @@ window.addEventListener("resize", () => { if (ddInput) ddClose(); });
 new MutationObserver(() => ddEnhance()).observe(document.body, { childList: true, subtree: true });
 
 /* ---------- boot ---------- */
+if (BETA) {
+  document.title = "クワガタ飼育台帳（ベータ版）";
+  document.querySelector("header h1").textContent = "クワガタ飼育台帳（ベータ版）";
+  document.querySelector('meta[name="apple-mobile-web-app-title"]').content = "飼育台帳β";
+  $("backupBtn").textContent = "バックアップ";
+}
 takeRoute();
 syncTakeRedirect();
 render();
@@ -5022,6 +5172,7 @@ render();
   }
   state.loaded = true;
   render();
+  if (meta.get("termsAgreed") !== TERMS_VER) showTerms(true);
   renderSyncInfo();
   state.routeWait = !runRoute(!(syncOn() && canSync() && syncAuto()));
   // 同期が動かなかったときのために、少し待ってからもう一度ためす
