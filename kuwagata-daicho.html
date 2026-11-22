@@ -730,9 +730,16 @@ function childLine(a, b) {
 
 // 印刷：ふつうはそのまま印刷。iPhoneのホーム画面から開いたアプリ（navigator.standalone）は印刷ボタンが効かないので、
 // 印刷するもの（#printArea）だけの別のページを開き、そこで印刷する（2026-11-23 あっきーさんの希望。iPhoneでの動きは要確認）
+// 原因を調べるため、エラーが起きたら画面に出す（2026-11-23。iPhoneの印刷の原因がわかったら外す）
+window.addEventListener("error", e => { try { toast("エラー：" + (e.message || "") + "（" + (e.lineno || "") + "行）", 10000); } catch {} });
 function doPrint() {
   // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
-  if (!window.__forceStandalonePrint) return window.print();
+  // iPhoneで印刷が出ない原因を調べるため、押されたことと、エラーを画面に出す（2026-11-23。原因がわかったら外す）
+  if (!window.__forceStandalonePrint) {
+    toast("印刷の画面を開いています…（" + ($("printArea").innerHTML.length ? "中身あり" : "中身なし") + "）", 4000);
+    try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); }
+    return;
+  }
   const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
   const fonts = [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.outerHTML).join("");
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
