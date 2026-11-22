@@ -731,48 +731,29 @@ function childLine(a, b) {
   return p + (Math.max(...list.map(v => v.n)) + 1);
 }
 
-// 印刷：ふつうはそのまま印刷。iPhoneのホーム画面から開いたアプリ（navigator.standalone）は印刷ボタンが効かないので、
-// 印刷するもの（#printArea）だけの別のページを開き、そこで印刷する（2026-11-23 あっきーさんの希望。iPhoneでの動きは要確認）
-// 原因を調べるため、エラーが起きたら画面に出す（2026-11-23。iPhoneの印刷の原因がわかったら外す）
-window.addEventListener("error", e => { try { toast("エラー：" + (e.message || "") + "（" + (e.lineno || "") + "行）", 10000); } catch {} });
-// iPhone（WebKit）は、通信や読み込みの途中だと印刷を後回しにする。何件の通信が終わっていないかを数える（調べるため）
-window.__inflight = 0;
-if (window.fetch) { const f0 = window.fetch.bind(window); window.fetch = (...a) => { window.__inflight++; return f0(...a).finally(() => { window.__inflight--; }); }; }
-window.addEventListener("beforeprint", () => { window.__printing = true; try { toast("印刷の準備ができました", 3000); } catch {} });
+// 印刷（2026-11-23）
+// ・iPhoneのホーム画面に追加したアプリ（navigator.standalone）は、iPhoneのしくみで印刷できない（何も起きない）。
+//   印刷用の別のページを開く形も試したが、そこからも刷れなかった。なので「Safariで開いて印刷してください」と伝え、Safariを開くボタンを出す。
+// ・Safari・PCは印刷できる。iPhoneのSafariは、文字（ウェブフォント）の読み込み中に印刷を頼むと止まるので、読み込みを待ってから頼む。
+//   印刷のあいだは、プレビューの作り直し（watchPreview）を止める（作り直しが続くと、iPhoneで印刷の画面が出なかった）。
+window.addEventListener("beforeprint", () => { window.__printing = true; });
 window.addEventListener("afterprint", () => { window.__printing = false; });
 function doPrint() {
-  // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
-  // iPhoneで印刷が出ない原因を調べるため、押されたことと、エラーを画面に出す（2026-11-23。原因がわかったら外す）
-  if (!window.__forceStandalonePrint) {
-    void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
-    const fontsLoading = document.fonts && document.fonts.status === "loading";
-    const imgs = [...document.images].filter(i => !i.complete).length;
-    toast(`印刷の画面を開いています…（${$("printArea").innerHTML.length ? "中身あり" : "中身なし"}・${document.readyState}・通信中${window.__inflight}件・画像読み込み中${imgs}枚・文字${fontsLoading ? "読み込み中" : "OK"}）`, 6000);
-    // 印刷のあいだは、プレビューの作り直し（watchPreview）を止める
-    window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
-    const go = () => { try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); } };
-    // 文字の読み込みが終わってから印刷する（最大5秒待つ）
-    if (fontsLoading) Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
-    else go();
-    return;
-  }
-  const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
-  const fonts = [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.outerHTML).join("");
-  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>印刷</title>${fonts}<style>${css}
-#printArea { display: block !important; }
-body { background: #fff; }
-.pbar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; background: #f4f1e8; border-bottom: 1px solid #d6dbd3; font-size: 14px; }
-.pbar button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #1a1e1b; background: #1a1e1b; color: #fff; }
-@media print { .pbar { display: none !important; } #printArea { overflow: visible !important; } }
-</style></head><body>
-<div class="pbar"><button type="button" onclick="window.print()">印刷する</button><span>動かないときは、画面の「共有」ボタン →「プリント」で印刷してください。</span></div>
-<div id="printArea" style="overflow-x:auto">${$("printArea").innerHTML}</div>
-</body></html>`;
-  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-  const w = window.open(url, "_blank");
-  if (!w) toast("印刷用のページを開けませんでした。PCかSafariで開いて印刷してください", 5000);
-  setTimeout(() => URL.revokeObjectURL(url), 120000);
+  if (navigator.standalone === true) return standalonePrintHelp();
+  void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
+  window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
+  const go = () => { try { window.print(); } catch { toast("印刷できませんでした。PCかSafariで開いて印刷してください", 6000); } };
+  if (document.fonts && document.fonts.status === "loading") Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
+  else go();
+}
+// ホーム画面のアプリで印刷ボタンを押したとき：Safariで開くように案内する（ホーム画面のアプリの外へ出るリンクは、Safariで開く）
+function standalonePrintHelp() {
+  $("termsBox").innerHTML = `<h2 id="termsTitle">Safariで開いて印刷してください</h2>
+    <p>iPhoneのホーム画面に追加したアプリからは、iPhoneのしくみで印刷ができません。</p>
+    <p>下のボタンでSafariが開きます。Safariで同じ画面を開いて、「印刷する」を押してください。</p>
+    <p class="hint">Safariの台帳は、ホーム画面のアプリとは別に記録をしまっています。Safariでも「バックアップ・同期」から一度Googleにつないでおくと、同じ記録が出ます。</p>
+    <div class="row end"><button class="btn" type="button" data-terms-close>閉じる</button><a class="btn primary" href="${esc(APP_URL)}" target="_blank" rel="noopener">Safariで開く</a></div>`;
+  $("terms").hidden = false; $("termsBox").scrollTop = 0;
 }
 function toast(msg, ms = 2400) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
