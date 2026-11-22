@@ -726,6 +726,28 @@ function childLine(a, b) {
   return p + (Math.max(...list.map(v => v.n)) + 1);
 }
 
+// 印刷：ふつうはそのまま印刷。iPhoneのホーム画面から開いたアプリ（navigator.standalone）は印刷ボタンが効かないので、
+// 印刷するもの（#printArea）だけの別のページを開き、そこで印刷する（2026-11-23 あっきーさんの希望。iPhoneでの動きは要確認）
+function doPrint() {
+  if (navigator.standalone !== true && !window.__forceStandalonePrint) return doPrint();
+  const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
+  const fonts = [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.outerHTML).join("");
+  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>印刷</title>${fonts}<style>${css}
+#printArea { display: block !important; }
+body { background: #fff; }
+.pbar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; background: #f4f1e8; border-bottom: 1px solid #d6dbd3; font-size: 14px; }
+.pbar button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #1a1e1b; background: #1a1e1b; color: #fff; }
+@media print { .pbar { display: none !important; } #printArea { overflow: visible !important; } }
+</style></head><body>
+<div class="pbar"><button type="button" onclick="window.print()">印刷する</button><span>動かないときは、画面の「共有」ボタン →「プリント」で印刷してください。</span></div>
+<div id="printArea" style="overflow-x:auto">${$("printArea").innerHTML}</div>
+</body></html>`;
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const w = window.open(url, "_blank");
+  if (!w) toast("印刷用のページを開けませんでした。PCかSafariで開いて印刷してください", 5000);
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
 function toast(msg, ms = 2400) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms);
@@ -3215,7 +3237,7 @@ function carePanel() {
 function printCare() {
   const list = state.careIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(careHtml).join("")}</div>`;
-  window.print();
+  doPrint();
 }
 /* ---------- 何世代でも遡れる血統表（改善⑱：画面で見るだけ。印刷はしない） ---------- */
 // はじめは3代。チェックで4代目・5代目…と増やす（この端末に覚える）。台帳にいる先祖は名前でどこまでもたどり、
@@ -3467,7 +3489,7 @@ function updateSp() {
 function printSp() {
   if (state.spKind !== "sold" && !spItems().length) return toast("印刷する個体を選んでください");
   $("printArea").innerHTML = spHtml();
-  window.print();
+  doPrint();
 }
 function sheetPanel() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
@@ -3640,13 +3662,13 @@ function printLabels() {
   const picked = labelItems();
   if (!picked.length) return toast("個体を選ぶか、空のラベルの枚数を入れてください");
   $("printArea").innerHTML = labelPagesHtml(picked, +$("lbStart").value || 1);
-  window.print();
+  doPrint();
 }
 
 function printSheets() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(sheetHtml).join("")}</div>`;
-  window.print();
+  doPrint();
 }
 
 function backupPanel() {
@@ -4521,7 +4543,7 @@ document.addEventListener("click", e => {
     const picked = pairLabelItems();
     if (!picked.length) return toast("ペアを選ぶか、空のラベルの枚数を入れてください");
     $("printArea").innerHTML = pairLabelPagesHtml(picked, +$("plStart").value || 1);
-    return window.print();
+    return doPrint();
   }
   if (t.dataset.treesave) {
     const b = structuredClone(state.beetles.find(x => x.id === t.dataset.treesave));
@@ -4539,7 +4561,7 @@ document.addEventListener("click", e => {
     save(b).then(ok => ok && toast("血統の入力を保存しました"));
     return;
   }
-  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return window.print(); }
+  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return doPrint(); }
   if (t.hasAttribute("data-spgroup") || t.hasAttribute("data-spungroup")) {
     const ids = [...document.querySelectorAll(".sp-pick:checked")].map(c => c.dataset.id);
     if (t.hasAttribute("data-spgroup") && ids.length < 2) return toast("組にする個体を2頭以上選んでください");
