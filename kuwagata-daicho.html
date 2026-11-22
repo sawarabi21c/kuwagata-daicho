@@ -729,7 +729,8 @@ function childLine(a, b) {
 // 印刷：ふつうはそのまま印刷。iPhoneのホーム画面から開いたアプリ（navigator.standalone）は印刷ボタンが効かないので、
 // 印刷するもの（#printArea）だけの別のページを開き、そこで印刷する（2026-11-23 あっきーさんの希望。iPhoneでの動きは要確認）
 function doPrint() {
-  if (navigator.standalone !== true && !window.__forceStandalonePrint) return doPrint();
+  // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
+  if (!window.__forceStandalonePrint) return window.print();
   const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
   const fonts = [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.outerHTML).join("");
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
