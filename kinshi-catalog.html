@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>菌糸・マット総合カタログ</title>
+<style>
+:root{
+  --bg:#ffffff; --bg2:#f6f5f2; --ink:#111111; --ink2:#555555; --line:#e2dfd8;
+  --gold:#b8922e; --gold-soft:#f5ecd4; --black:#141414; --danger:#b3261e; --ok:#2e7d32;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;font-size:15px;line-height:1.55}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--gold)}
+#app{display:flex;min-height:100vh}
+/* サイドバー */
+#side{width:220px;flex:none;background:var(--black);color:#eee;padding:18px 12px;position:sticky;top:0;height:100vh}
+#side h1{font-size:15px;margin:0 6px 4px;color:#fff;letter-spacing:.04em}
+#side .brand{font-size:11px;color:var(--gold);margin:0 6px 18px;letter-spacing:.08em}
+#side nav button{display:block;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;color:#ddd;padding:10px 12px;margin:2px 0;border-radius:4px;cursor:pointer}
+#side nav button:hover{background:#222}
+#side nav button.on{color:var(--gold);border-left-color:var(--gold);background:#1d1a12;font-weight:600}
+#side nav button.collect{margin-top:14px;border:1px solid var(--gold);color:var(--gold);text-align:center}
+#side .soon{font-size:12px;color:#888;margin:16px 8px 0}
+#topbar{display:none}
+main{flex:1;min-width:0;padding:22px 26px 60px}
+h2{font-size:20px;margin:0 0 14px;border-bottom:2px solid var(--gold);display:inline-block;padding-bottom:2px}
+.muted{color:var(--ink2);font-size:13px}
+.btn{background:#fff;border:1px solid var(--ink);border-radius:6px;padding:7px 14px;cursor:pointer}
+.btn:hover{background:var(--bg2)}
+.btn.main{background:var(--black);color:#fff;border-color:var(--black)}
+.btn.main:hover{background:#333}
+.btn.gold{background:var(--gold);color:#fff;border-color:var(--gold)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.small{padding:3px 9px;font-size:13px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.toolbar input[type=search]{flex:1;min-width:200px}
+#insect{border-color:var(--gold);font-weight:600}
+input[type=text],input[type=search],input[type=number],input[type=url],input[type=date],select,textarea{border:1px solid var(--line);border-radius:6px;padding:7px 9px;background:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--gold-soft);border-color:var(--gold)}
+.qty{display:flex;align-items:center;gap:6px}
+.qty input{width:70px}
+details.filters{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:14px;background:var(--bg2)}
+details.filters summary{cursor:pointer;font-weight:600}
+.frow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+.frow > b{width:72px;font-size:13px;color:var(--ink2);font-weight:600}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 11px;font-size:13px;cursor:pointer}
+.chip.on{background:var(--black);color:#fff;border-color:var(--black)}
+.range input{width:100px}
+/* 表 */
+table.list{width:100%;border-collapse:collapse;font-size:14px}
+table.list th{background:var(--black);color:#fff;text-align:left;font-weight:600;padding:8px 8px;white-space:nowrap;position:sticky;top:0}
+table.list td{border-bottom:1px solid var(--line);padding:8px 8px;vertical-align:top}
+table.list tbody tr{cursor:pointer}
+table.list tbody tr:hover td{background:#fbf8ef}
+table.list tr.group td{background:var(--gold-soft);font-weight:700;cursor:default}
+.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+table.list td.nw{white-space:nowrap}
+table.list td.feat{min-width:180px;max-width:320px;font-size:13px;line-height:1.5}
+table.list td.feat .clamp,table.list td.fit .clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+table.list td.fit{min-width:130px;max-width:220px;font-size:13px;line-height:1.5}
+.sub{display:block;color:var(--ink2);font-size:12px}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;margin:2px 3px 0 0;white-space:nowrap}
+.badge.best{background:var(--gold);color:#fff}
+.badge.best2{background:var(--black);color:var(--gold)}
+.badge.gray{background:#eee;color:#666}
+.badge.warn{background:#fdecea;color:var(--danger)}
+.unknown{color:var(--ink2)}
+.empty{padding:30px;text-align:center;color:var(--ink2);border:1px dashed var(--line);border-radius:8px}
+/* カード（ショップ） */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff}
+.card h3{margin:0 0 6px;font-size:16px}
+.card .row{font-size:13px;margin:3px 0}
+/* パネル */
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;z-index:20;overflow:auto;padding:30px 12px}
+#overlay.show{display:flex}
+#panel{background:#fff;border-radius:12px;width:100%;max-width:720px;padding:20px 22px;position:relative;border-top:4px solid var(--gold)}
+#panel .x{position:absolute;right:12px;top:10px;border:0;background:none;font-size:22px;cursor:pointer;color:var(--ink2)}
+#panel h3{margin:0 0 12px;font-size:18px;padding-right:30px}
+.form{display:grid;grid-template-columns:150px 1fr;gap:9px 12px;align-items:center}
+.form label{font-size:13px;color:var(--ink2)}
+.form .full{grid-column:1/-1}
+.form textarea{min-height:64px;width:100%}
+.form input,.form select{width:100%}
+.rules .r{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.rules .r input,.rules .r select{width:auto}
+.rules .r input[type=number]{width:100px}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.actions .left{margin-right:auto}
+dl.info{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;margin:0 0 14px;font-size:14px}
+dl.info dt{color:var(--ink2)}
+dl.info dd{margin:0;overflow-wrap:anywhere}
+table.qtab{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+table.qtab th,table.qtab td{border:1px solid var(--line);padding:5px 7px}
+table.qtab th{background:var(--bg2);font-weight:600}
+#dlg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
+#dlg.show{display:flex}
+#dlgBox{background:#fff;border-radius:12px;max-width:440px;width:100%;padding:18px 18px 14px;border-top:4px solid var(--gold);white-space:pre-wrap}
+#dlgBox input{width:100%;margin-top:10px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--black);color:#fff;padding:9px 18px;border-radius:8px;display:none;z-index:30;border-left:4px solid var(--gold)}
+.note{background:var(--bg2);border-left:4px solid var(--gold);padding:10px 12px;border-radius:6px;font-size:13px;margin:10px 0}
+/* iPhone */
+@media (max-width: 760px){
+  #app{display:block}
+  #topbar{display:flex;align-items:center;gap:10px;background:var(--black);color:#fff;padding:10px 14px;position:sticky;top:0;z-index:10}
+  #topbar button{background:none;border:1px solid #555;color:var(--gold);border-radius:6px;padding:3px 10px;font-size:18px}
+  #topbar b{font-size:15px}
+  #side{position:fixed;left:0;top:0;z-index:15;height:100vh;transform:translateX(-100%);transition:transform .2s}
+  #side.open{transform:none;box-shadow:4px 0 20px rgba(0,0,0,.4)}
+  main{padding:14px 14px 60px}
+  /* 上の操作：検索は1行、購入数と並べ替えは横に並べる */
+  .toolbar{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center}
+  .toolbar input[type=search]{grid-column:1/-1;min-width:0;width:100%}
+  .toolbar select{width:100%;min-width:0}
+  .toolbar #insect{grid-column:1/-1}
+  .qty input{width:56px}
+  .toolbar .btn.main{justify-self:end;padding:6px 12px}
+  h2{font-size:19px;margin:4px 0 10px}
+  /* 商品はカード。大事な数字を上にまとめて、1画面に多く出す */
+  table.list thead{display:none}
+  table.list,table.list tbody{display:block;width:100%}
+  table.list tr{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px 8px;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:10px 12px;background:#fff}
+  table.list tr.group{display:block;border:0;padding:0;margin-top:14px;background:none}
+  table.list tr.group td{border-radius:6px;display:block;padding:6px 10px}
+  table.list td{border:0;padding:0;display:block;min-width:0;max-width:none;font-size:14px}
+  table.list td::before{content:attr(data-l);display:block;color:var(--ink2);font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  table.list td.name{grid-column:1/-1;font-size:15px;line-height:1.45}
+  table.list td.name::before{content:none}
+  table.list td.k,table.list td.f,table.list td.v{grid-column:span 4}
+  table.list td.pr,table.list td.u,table.list td.tot,table.list td.eff{grid-column:span 3}
+  table.list td.fit,table.list td.feat{grid-column:1/-1;font-size:13px}
+  table.list td.num{text-align:left;white-space:normal}
+  table.list td.pr,table.list td.tot{font-weight:700}
+  table.list td.tot,table.list td.eff{color:var(--black)}
+  table.list td.blank{display:none}
+  table.list td.feat .clamp,table.list td.fit .clamp{-webkit-line-clamp:2}
+  table.list td.feat::before{display:inline;margin-right:6px}
+  table.list td.k,table.list td.f,table.list td.v{order:1}
+  table.list td.pr,table.list td.u,table.list td.tot,table.list td.eff{order:2}
+  table.list td.fit,table.list td.feat{order:3}
+  table.list td.blank{display:none !important}
+  table.list tbody tr:hover td{background:none}
+  .form{grid-template-columns:1fr}
+  dl.info{grid-template-columns:1fr;gap:2px 0}
+  dl.info dt{margin-top:8px;font-size:12px}
+  #overlay{padding:10px 6px}
+  #panel{padding:16px 14px}
+}
+</style>
+</head>
+<body>
+<div id="topbar"><button id="menuBtn" aria-label="メニュー">☰</button><b>菌糸・マット総合カタログ</b></div>
+<div id="app">
+  <aside id="side">
+    <h1>菌糸・マット総合カタログ</h1>
+    <div class="brand">DORCUS LABORATORY</div>
+    <nav>
+      <button data-view="products">商品一覧・価格比較</button>
+      <button data-view="shops">ショップ管理</button>
+      <button data-view="settings">設定・バックアップ</button>
+      <button id="collectBtn" class="collect">収集を頼む</button>
+    </nav>
+    <div class="soon">ダッシュボード・ランキング・AI取り込み・価格の履歴・通知は、次の段階で足します。</div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="overlay"><div id="panel"></div></div>
+<div id="toast"></div>
+<div id="dlg"><div id="dlgBox"><div id="dlgMsg"></div><input type="text" id="dlgInput"><div class="actions"><button class="btn" id="dlgNo">キャンセル</button><button class="btn main" id="dlgYes">OK</button></div></div></div>
+<datalist id="dlFungus"><option value="カワラタケ"><option value="ヒラタケ"><option value="オオヒラタケ"><option value="カワラ＋ヒラタケ"><option value="不明"></datalist>
+
+<script>
+"use strict";
+/* ========== 保存（この端末の中だけ。段階4でGoogleドライブ同期を足す） ========== */
+const KEY = "kinshi-catalog:data";
+const UIKEY = "kinshi-catalog:ui";
+const KINDS = ["ブロック", "ボトル", "マット", "その他"];
+const STOCKS = ["在庫あり", "残りわずか", "在庫切れ", "販売終了", "不明"];
+const SHOP_STATUS = ["公式サイト確認済み", "情報未確認", "情報更新待ち", "サイト閉鎖・アクセス不可", "取り扱い終了"];
+const NONE_FIT = "記載なし";
+
+function blank(){ return {version:1, shops:[], products:[], savedSearches:[], settings:{region:""}}; }
+function load(){
+  let d;
+  try { d = JSON.parse(localStorage.getItem(KEY) || "null"); } catch(e){ d = null; }
+  return normalize(d);
+}
+function normalize(d){
+  const b = blank();
+  if (!d || typeof d !== "object") return b;
+  b.shops = Array.isArray(d.shops) ? d.shops.map(normShop) : [];
+  b.products = Array.isArray(d.products) ? d.products.map(normProduct) : [];
+  b.savedSearches = Array.isArray(d.savedSearches) ? d.savedSearches : [];
+  b.settings = Object.assign({region:""}, d.settings || {});
+  return b;
+}
+function normShop(s){
+  return Object.assign({id:uid(), name:"", url:"", status:"情報未確認", checkedAt:"", flatShip:null, regionShip:[], qtyShip:[], freeOver:null, extraFee:0, extraNote:"", discounts:[], memo:"", updatedAt:""}, s, {
+    regionShip: Array.isArray(s.regionShip) ? s.regionShip : [],
+    qtyShip: Array.isArray(s.qtyShip) ? s.qtyShip : [],
+    discounts: Array.isArray(s.discounts) ? s.discounts : []
+  });
+}
+function normProduct(p){
+  return Object.assign({id:uid(), shopId:"", name:"", kind:"ブロック", fungus:"", volumeL:null, price:null, fits:[], fitsSource:"", feature:"", featureSource:"", stock:"不明", url:"", desc:"", checkedAt:"", updatedAt:""}, p, {
+    fits: Array.isArray(p.fits) ? p.fits : []
+  });
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(db)); return true; }
+  catch(e){ toast("保存できませんでした：" + e.message); return false; }
+}
+function loadUi(){
+  let u = {};
+  try { u = JSON.parse(localStorage.getItem(UIKEY) || "{}") || {}; } catch(e){}
+  return Object.assign({view:"products", qty:1, sort:"shop", group:false, q:"", f:{kind:[], fungus:[], shop:[], fit:[], insect:"", priceMin:"", priceMax:"", volMin:"", volMax:"", shipKnown:false, stock:[]}}, u);
+}
+function saveUi(){ try { localStorage.setItem(UIKEY, JSON.stringify(ui)); } catch(e){} }
+
+let db = load();
+let ui = loadUi();
+ui.f = Object.assign({kind:[], fungus:[], shop:[], fit:[], insect:"", priceMin:"", priceMax:"", volMin:"", volMax:"", shipKnown:false, stock:[]}, ui.f || {});
+
+/* ========== 小さな道具 ========== */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+function yen(n){ return n == null || isNaN(n) ? "—" : Math.round(n).toLocaleString("ja-JP") + "円"; }
+function num(v){ if (v === "" || v == null) return null; const n = Number(String(v).replace(/[,，円L]/g, "")); return isFinite(n) ? n : null; }
+function today(){ const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function nowIso(){ return new Date().toISOString(); }
+function shopOf(p){ return db.shops.find(s => s.id === p.shopId) || null; }
+function shopName(p){ const s = shopOf(p); return s ? s.name : "（ショップ未設定）"; }
+function fitsText(p){ return p.fits.length ? p.fits.join("、") : NONE_FIT; }
+/* 使う虫で選ぶ：適合種の言葉（店やメーカーに書いてある名前）を、虫ごとにまとめる。
+   名前が書いてある商品だけが当たる（菌種などから推測はしない） */
+const INSECTS = [
+  ["タランドゥス", /タランド|^タラ$/], ["レギウス", /レギ/], ["オウゴンオニ", /オウゴン|^ババ/],
+  ["オオクワガタ", /オオクワ|^他オオクワガタ$/], ["アンタエウス", /アンタエウス|^アンテ|ネパレンシス/],
+  ["グランディス・ホーペ・クルビデンス", /グランディス|ホーペ|ホペイ|クルビデンス|シェンクリング/],
+  ["ヒラタクワガタ", /ヒラタ|パラワン|スマトラ|テイオウ/], ["ノコギリクワガタ", /ノコ|ギラファ/],
+  ["ミヤマクワガタ", /ミヤマ/], ["ニジイロクワガタ", /ニジ/], ["フタマタクワガタ", /フタマタ/],
+  ["シカクワガタ", /シカ|ウエストウッディ/], ["ホソアカクワガタ", /ホソアカ/], ["ツヤクワガタ", /^ツヤクワ/],
+  ["コクワガタ", /コクワ/], ["パプキン", /パプキン/],
+  ["クワガタ（種類の名前なし）", /^(クワガタ|クワガタムシ|クワガタ幼虫|クワガタの幼虫|各種クワガタ|各種クワガタムシ|クワガタムシ各種幼虫|外国産クワガタムシ|ほとんど)/],
+  ["ヘラクレス", /ヘラクレス/], ["コーカサス・アトラス", /コーカサス|アトラス/], ["ネプチューン・サタン", /ネプチューン|サタン|サターン/],
+  ["ゾウカブト", /ゾウ/], ["シロカブト", /シロ/], ["ヒナカブト", /ヒナカブト|マルガリータ/],
+  ["国産カブトムシ", /国産カブト|日本産カブト/],
+  ["カブトムシ（種類の名前なし）", /^(カブトムシ|カブト|外国産カブトムシ|大型カブト|カブト系全般|カブトムシ幼虫)/]
+];
+const insectCache = new Map();
+function insectsOf(p){
+  const key = p.fits.join("、");
+  if (!insectCache.has(key)) insectCache.set(key, INSECTS.filter(([, re]) => p.fits.some(f => re.test(f))).map(([name]) => name));
+  return insectCache.get(key);
+}
+let toastTimer = null;
+function toast(msg){ const t = document.getElementById("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = "none", 2600); }
+/* 確認・お知らせの画面。ブラウザの confirm / alert / prompt は、iPhone でファイルを開いたときなどに
+   出ないことがある（出ずに「キャンセル」扱いになる）ので、アプリの中に自分で出す */
+function dialog(msg, opt){
+  opt = opt || {};
+  return new Promise(resolve => {
+    const box = document.getElementById("dlg"), inp = document.getElementById("dlgInput");
+    const yes = document.getElementById("dlgYes"), no = document.getElementById("dlgNo");
+    document.getElementById("dlgMsg").textContent = msg;
+    inp.style.display = opt.input ? "" : "none"; inp.value = opt.input ? (opt.value || "") : "";
+    no.style.display = opt.alert ? "none" : "";
+    yes.textContent = opt.ok || "OK";
+    box.classList.add("show");
+    const done = v => { box.classList.remove("show"); yes.onclick = no.onclick = null; resolve(v); };
+    yes.onclick = () => done(opt.input ? inp.value : true);
+    no.onclick = () => done(opt.input ? null : false);
+    (opt.input ? inp : yes).focus();
+  });
+}
+const ask = (msg, ok) => dialog(msg, {ok});
+const tell = msg => dialog(msg, {alert: true});
+const askText = (msg, value) => dialog(msg, {input: true, value});
+function qtyNow(){ const n = Math.floor(Number(ui.qty)); return n >= 1 ? n : 1; }
+
+/* ========== 計算（本体・1L単価・送料込みの購入総額・実質1L単価） ========== */
+// 割引：個数の条件を満たすもののうち、いちばん大きい「◯個以上」を使う
+function discountFor(shop, n, subtotal){
+  if (!shop) return {amount:0, label:""};
+  const rules = shop.discounts.filter(r => num(r.minQty) != null && n >= num(r.minQty) && num(r.value) != null);
+  if (!rules.length) return {amount:0, label:""};
+  rules.sort((a,b) => num(b.minQty) - num(a.minQty));
+  const r = rules[0], v = num(r.value);
+  let amount = 0, label = "";
+  if (r.kind === "percent"){ amount = subtotal * v / 100; label = r.minQty + "個以上で" + v + "%引き"; }
+  else if (r.kind === "perItem"){ amount = v * n; label = r.minQty + "個以上で1個" + v + "円引き"; }
+  else { amount = v; label = r.minQty + "個以上で" + v + "円引き"; }
+  return {amount: Math.min(amount, subtotal), label};
+}
+// 送料：①送料無料の条件 → ②個数ごとの送料 → ③配送先の地域の送料 → ④全国一律。どれも無ければ「不明」
+function shippingFor(shop, n, afterDiscount){
+  if (!shop) return {fee:null, label:"ショップ未設定"};
+  const free = num(shop.freeOver);
+  if (free != null && afterDiscount >= free) return {fee:0, label:free.toLocaleString() + "円以上で送料無料"};
+  const q = shop.qtyShip.filter(r => num(r.minQty) != null && num(r.fee) != null && n >= num(r.minQty)).sort((a,b) => num(b.minQty) - num(a.minQty));
+  if (q.length) return {fee:num(q[0].fee), label:q[0].minQty + "個以上の送料"};
+  const region = (db.settings.region || "").trim();
+  if (region){
+    // 地域の欄は「関東、信越」「東京、神奈川」のように「、」で複数書ける。どれかが配送先と同じなら使う
+    const names = x => String(x.region || "").split(/[、,，\/／]+/).map(s => s.trim()).filter(Boolean);
+    const r = shop.regionShip.find(x => names(x).includes(region) && num(x.fee) != null);
+    if (r) return {fee:num(r.fee), label:region + "の送料"};
+  }
+  if (num(shop.flatShip) != null) return {fee:num(shop.flatShip), label:"全国一律"};
+  return {fee:null, label:"送料不明"};
+}
+function calc(p, n){
+  const shop = shopOf(p);
+  const price = num(p.price), vol = num(p.volumeL);
+  const unit = price != null && vol ? price / vol : null;
+  if (price == null) return {price:null, unit:null, subtotal:null, discount:0, ship:null, extra:0, total:null, effUnit:null, shipLabel:"価格不明", discLabel:""};
+  const subtotal = price * n;
+  const d = discountFor(shop, n, subtotal);
+  const after = subtotal - d.amount;
+  const s = shippingFor(shop, n, after);
+  const extra = shop ? (num(shop.extraFee) || 0) : 0;
+  const total = s.fee == null ? null : after + s.fee + extra;
+  const effUnit = total != null && vol ? total / (vol * n) : null;
+  return {price, unit, subtotal, discount:d.amount, discLabel:d.label, ship:s.fee, shipLabel:s.label, extra, total, effUnit};
+}
+
+/* ========== 画面の切り替え ========== */
+const main = document.getElementById("main");
+function setView(v){
+  ui.view = v; saveUi();
+  document.querySelectorAll("#side nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+  document.getElementById("side").classList.remove("open");
+  render();
+}
+function render(){
+  if (ui.view === "shops") renderShops();
+  else if (ui.view === "settings") renderSettings();
+  else renderProducts();
+}
+document.querySelectorAll("#side nav button[data-view]").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+document.getElementById("collectBtn").addEventListener("click", () => { document.getElementById("side").classList.remove("open"); requestCollect(); });
+document.getElementById("menuBtn").addEventListener("click", () => document.getElementById("side").classList.toggle("open"));
+
+/* ========== 商品一覧・価格比較 ========== */
+const SORTS = {
+  shop: "ショップ名・商品名",
+  total: "送料込みの購入総額が安い順",
+  effUnit: "送料込みの実質1L単価が安い順",
+  unit: "1L単価が安い順",
+  price: "商品価格が安い順",
+  volume: "容量が大きい順",
+  name: "商品名",
+  checked: "確認日が新しい順"
+};
+function matchesSearch(p, q){
+  if (!q) return true;
+  const s = shopOf(p);
+  const hay = [p.name, p.kind, p.fungus, p.volumeL, p.price, fitsText(p), p.fitsSource, p.feature, p.stock, p.desc, p.url,
+    s && s.name, s && s.memo, s && s.extraNote].join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+function filtered(){
+  const f = ui.f, n = qtyNow();
+  return db.products.filter(p => {
+    if (!matchesSearch(p, ui.q)) return false;
+    if (f.kind.length && !f.kind.includes(p.kind)) return false;
+    if (f.fungus.length && !f.fungus.includes(p.fungus || "不明")) return false;
+    if (f.shop.length && !f.shop.includes(p.shopId)) return false;
+    if (f.fit.length && !f.fit.some(x => x === NONE_FIT ? !p.fits.length : p.fits.includes(x))) return false;
+    if (f.insect && !insectsOf(p).includes(f.insect)) return false;
+    if (f.stock.length && !f.stock.includes(p.stock || "不明")) return false;
+    const pr = num(p.price), vol = num(p.volumeL);
+    if (num(f.priceMin) != null && (pr == null || pr < num(f.priceMin))) return false;
+    if (num(f.priceMax) != null && (pr == null || pr > num(f.priceMax))) return false;
+    if (num(f.volMin) != null && (vol == null || vol < num(f.volMin))) return false;
+    if (num(f.volMax) != null && (vol == null || vol > num(f.volMax))) return false;
+    if (f.shipKnown && calc(p, n).total == null) return false;
+    return true;
+  });
+}
+function sortList(list){
+  const n = qtyNow();
+  const c = new Map(list.map(p => [p.id, calc(p, n)]));
+  const by = (fn, desc) => (a, b) => {
+    const x = fn(a), y = fn(b);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1; if (y == null) return -1;   // わからないものは最後
+    return desc ? y - x : x - y;
+  };
+  const jp = (a, b) => String(a).localeCompare(String(b), "ja");
+  const byShop = (a, b) => jp(shopName(a), shopName(b)) || jp(a.name, b.name);
+  const s = ui.sort;
+  let cmp;
+  if (s === "total") cmp = by(p => c.get(p.id).total);
+  else if (s === "effUnit") cmp = by(p => c.get(p.id).effUnit);
+  else if (s === "unit") cmp = by(p => c.get(p.id).unit);
+  else if (s === "price") cmp = by(p => num(p.price));
+  else if (s === "volume") cmp = by(p => num(p.volumeL), true);
+  else if (s === "name") cmp = (a, b) => jp(a.name, b.name);
+  else if (s === "checked") cmp = (a, b) => String(b.checkedAt || "").localeCompare(String(a.checkedAt || ""));
+  else cmp = byShop;
+  return list.slice().sort((a, b) => cmp(a, b) || byShop(a, b));
+}
+function groupKey(p){ return p.kind + "×" + (p.fungus || "菌種不明"); }
+// 「種類×菌種」ごとに、1L単価と送料込みの実質1L単価がいちばん安い商品に印を付ける
+function bestMarks(list, n){
+  const groups = {};
+  list.forEach(p => { (groups[groupKey(p)] = groups[groupKey(p)] || []).push(p); });
+  const unitBest = new Set(), effBest = new Set();
+  Object.values(groups).forEach(g => {
+    if (g.length < 2) return;
+    const pick = (fn, set) => {
+      let min = null;
+      g.forEach(p => { const v = fn(p); if (v != null && (min == null || v < min)) min = v; });
+      if (min != null) g.forEach(p => { if (fn(p) === min) set.add(p.id); });
+    };
+    pick(p => calc(p, n).unit, unitBest);
+    pick(p => calc(p, n).effUnit, effBest);
+  });
+  return {unitBest, effBest};
+}
+function chipRow(label, key, values, labelOf){
+  if (!values.length) return "";
+  return `<div class="frow"><b>${esc(label)}</b>` + values.map(v =>
+    `<button class="chip ${ui.f[key].includes(v) ? "on" : ""}" data-chip="${esc(key)}" data-v="${esc(v)}">${esc(labelOf ? labelOf(v) : v)}</button>`).join("") + `</div>`;
+}
+function activeFilterCount(){
+  const f = ui.f;
+  return f.kind.length + f.fungus.length + f.shop.length + f.fit.length + f.stock.length +
+    ["priceMin","priceMax","volMin","volMax"].filter(k => num(f[k]) != null).length + (f.shipKnown ? 1 : 0) + (f.insect ? 1 : 0);
+}
+let filtersOpen = false;
+let composing = false;
+function renderProducts(){
+  const n = qtyNow();
+  const fungi = [...new Set(db.products.map(p => p.fungus || "不明"))].sort((a,b) => a.localeCompare(b, "ja"));
+  const fits = [...new Set(db.products.flatMap(p => p.fits))].sort((a,b) => a.localeCompare(b, "ja"));
+  if (db.products.some(p => !p.fits.length)) fits.push(NONE_FIT);
+  const shopIds = db.shops.slice().sort((a,b) => a.name.localeCompare(b.name, "ja")).map(s => s.id);
+  const list = sortList(filtered());
+  const {unitBest, effBest} = bestMarks(list, n);
+  const fc = activeFilterCount();
+
+  let rows = "";
+  let lastGroup = null;
+  const ordered = ui.group ? list.slice().sort((a, b) => groupKey(a).localeCompare(groupKey(b), "ja")) : list;
+  ordered.forEach(p => {
+    if (ui.group && groupKey(p) !== lastGroup){
+      lastGroup = groupKey(p);
+      rows += `<tr class="group"><td colspan="10">${esc(lastGroup)}</td></tr>`;
+    }
+    const c = calc(p, n);
+    const marks = (unitBest.has(p.id) ? `<span class="badge best">1L単価 最安</span>` : "") +
+                  (effBest.has(p.id) ? `<span class="badge best2">送料込み 最安</span>` : "") +
+                  (p.stock === "在庫切れ" || p.stock === "販売終了" ? `<span class="badge warn">${esc(p.stock)}</span>` : "");
+    rows += `<tr data-id="${esc(p.id)}">
+      <td class="name"><b>${esc(p.name || "（名前なし）")}</b><span class="sub">${esc(shopName(p))}</span>${marks}</td>
+      <td data-l="種類" class="nw k">${esc(p.kind)}</td>
+      <td data-l="菌種" class="nw f">${esc(p.fungus || "不明")}</td>
+      <td data-l="容量" class="num v">${num(p.volumeL) != null ? esc(p.volumeL) + "L" : "—"}</td>
+      <td data-l="商品価格" class="num pr">${yen(c.price)}</td>
+      <td data-l="1L単価" class="num u">${yen(c.unit)}</td>
+      <td data-l="適合種" class="fit${p.fits.length ? "" : " blank"}">${p.fits.length ? `<span class="clamp" title="${esc(fitsText(p))}">${esc(fitsText(p))}</span>` : `<span class="unknown">${NONE_FIT}</span>`}</td>
+      <td data-l="特徴" class="feat${p.feature ? "" : " blank"}">${p.feature ? `<span class="clamp" title="${esc(p.feature)}">${esc(p.feature)}</span>` : `<span class="unknown">—</span>`}</td>
+      <td data-l="${n}個の送料込み" class="num tot">${c.total == null ? `<span class="unknown">${esc(c.shipLabel === "送料不明" ? "送料不明" : "不明")}</span>` : yen(c.total)}</td>
+      <td data-l="送料込み1L" class="num eff">${c.effUnit == null ? `<span class="unknown">不明</span>` : yen(c.effUnit)}</td>
+    </tr>`;
+  });
+
+  main.innerHTML = `
+    <h2>商品一覧・価格比較</h2>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="商品名・ショップ・菌種・適合種・特徴・メモ・送料の条件などで探す" value="${esc(ui.q)}">
+      <label class="qty">購入数 <input type="number" id="qty" min="1" step="1" value="${n}"> 個</label>
+      <select id="sort">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${ui.sort === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
+      <select id="insect" title="店やメーカーのページに名前が書いてある商品だけが出ます">
+        <option value="">使う虫：すべて</option>
+        ${(() => { const cnt = {}; db.products.forEach(p => insectsOf(p).forEach(x => cnt[x] = (cnt[x] || 0) + 1));
+          return INSECTS.filter(([name]) => cnt[name] || ui.f.insect === name).map(([name]) => `<option value="${esc(name)}" ${ui.f.insect === name ? "selected" : ""}>${esc(name)}（${cnt[name] || 0}件）</option>`).join(""); })()}
+      </select>
+      <label><input type="checkbox" id="group" ${ui.group ? "checked" : ""}> 種類×菌種でまとめる</label>
+      <button class="btn main" id="addProduct">＋ 商品を追加</button>
+    </div>
+    <details class="filters" ${filtersOpen ? "open" : ""}>
+      <summary>絞り込み${fc ? `（${fc}件の条件）` : ""}</summary>
+      ${chipRow("種類", "kind", KINDS)}
+      ${chipRow("菌種", "fungus", fungi)}
+      ${chipRow("ショップ", "shop", shopIds, id => (db.shops.find(s => s.id === id) || {}).name || "")}
+      ${chipRow("適合種", "fit", fits)}
+      ${chipRow("在庫", "stock", STOCKS)}
+      <div class="frow range"><b>価格</b><input type="number" data-r="priceMin" placeholder="下限" value="${esc(ui.f.priceMin)}"> 〜 <input type="number" data-r="priceMax" placeholder="上限" value="${esc(ui.f.priceMax)}"> 円</div>
+      <div class="frow range"><b>容量</b><input type="number" step="0.1" data-r="volMin" placeholder="下限" value="${esc(ui.f.volMin)}"> 〜 <input type="number" step="0.1" data-r="volMax" placeholder="上限" value="${esc(ui.f.volMax)}"> L</div>
+      <div class="frow"><b>送料</b><label><input type="checkbox" id="shipKnown" ${ui.f.shipKnown ? "checked" : ""}> 送料がわかる商品だけ</label></div>
+      <div class="frow"><b>条件</b>
+        <button class="btn small" id="clearF">条件を消す</button>
+        <button class="btn small" id="saveF">この条件を保存</button>
+        ${db.savedSearches.length ? `<select id="loadF"><option value="">保存した条件を使う</option>${db.savedSearches.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("")}</select>
+        <button class="btn small danger" id="delF">保存した条件を消す</button>` : ""}
+      </div>
+      <div class="muted">違う項目どうしは「かつ」、同じ項目で複数選ぶと「または」で絞り込みます。</div>
+    </details>
+    <div class="muted" style="margin-bottom:8px">${list.length}件（全${db.products.length}件）　送料込みの金額は、購入数 ${n}個・配送先「${esc(db.settings.region || "未設定")}」で計算しています。送料がわからない商品は「不明」です。</div>
+    ${db.products.length === 0 ? `<div class="empty">まだ商品がありません。先に「ショップ管理」でショップを登録してから、「＋ 商品を追加」で入れてください。</div>` :
+      list.length === 0 ? `<div class="empty">条件に合う商品がありません。</div>` :
+      `<table class="list"><thead><tr><th>商品名</th><th>種類</th><th>菌種</th><th class="num">容量</th><th class="num">商品価格</th><th class="num">1L単価</th><th>適合種</th><th>特徴</th><th class="num">${n}個の送料込み総額</th><th class="num">送料込み実質1L</th></tr></thead><tbody>${rows}</tbody></table>`}
+  `;
+  const q = document.getElementById("q");
+  // 日本語入力（変換の途中）で画面を作り直すと、入力が消えてしまう。変換が終わってから絞り込む
+  const onSearch = () => { ui.q = q.value; saveUi(); keepFocus("q", renderProducts); };
+  q.addEventListener("input", e => { if (e.isComposing || composing) return; onSearch(); });
+  q.addEventListener("compositionstart", () => { composing = true; });
+  q.addEventListener("compositionend", () => { composing = false; onSearch(); });
+  document.getElementById("qty").addEventListener("change", e => { ui.qty = Math.max(1, Math.floor(Number(e.target.value) || 1)); saveUi(); renderProducts(); });
+  document.getElementById("sort").addEventListener("change", e => { ui.sort = e.target.value; saveUi(); renderProducts(); });
+  document.getElementById("insect").addEventListener("change", e => { ui.f.insect = e.target.value; saveUi(); renderProducts(); });
+  document.getElementById("group").addEventListener("change", e => { ui.group = e.target.checked; saveUi(); renderProducts(); });
+  document.getElementById("addProduct").addEventListener("click", () => openProductForm(null));
+  main.querySelector("details.filters").addEventListener("toggle", e => { filtersOpen = e.target.open; });
+  main.querySelectorAll("[data-chip]").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.chip, v = b.dataset.v, arr = ui.f[k];
+    const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v);
+    saveUi(); renderProducts();
+  }));
+  main.querySelectorAll("[data-r]").forEach(inp => inp.addEventListener("change", () => { ui.f[inp.dataset.r] = inp.value; saveUi(); renderProducts(); }));
+  document.getElementById("shipKnown").addEventListener("change", e => { ui.f.shipKnown = e.target.checked; saveUi(); renderProducts(); });
+  document.getElementById("clearF").addEventListener("click", () => { ui.f = {kind:[], fungus:[], shop:[], fit:[], insect:"", priceMin:"", priceMax:"", volMin:"", volMax:"", shipKnown:false, stock:[]}; ui.q = ""; saveUi(); renderProducts(); });
+  document.getElementById("saveF").addEventListener("click", async () => {
+    const name = await askText("この条件の名前（例：タランドゥス用ボトル）");
+    if (!name) return;
+    db.savedSearches.push({name: name.trim(), q: ui.q, f: JSON.parse(JSON.stringify(ui.f)), sort: ui.sort});
+    if (save()) { toast("条件を保存しました"); renderProducts(); }
+  });
+  const lf = document.getElementById("loadF");
+  if (lf) lf.addEventListener("change", () => {
+    const s = db.savedSearches[Number(lf.value)]; if (!s) return;
+    ui.q = s.q || ""; ui.f = Object.assign(loadUi().f, JSON.parse(JSON.stringify(s.f || {}))); ui.sort = s.sort || ui.sort;
+    saveUi(); renderProducts();
+  });
+  const df = document.getElementById("delF");
+  if (df) df.addEventListener("click", async () => {
+    const i = lf.value; if (i === "") { toast("消す条件を、左の欄で選んでください"); return; }
+    const s = db.savedSearches[Number(i)];
+    if (!(await ask("保存した条件「" + s.name + "」を消しますか？"))) return;
+    db.savedSearches.splice(Number(i), 1); if (save()) renderProducts();
+  });
+  main.querySelectorAll("tbody tr[data-id]").forEach(tr => tr.addEventListener("click", () => openProductDetail(tr.dataset.id)));
+}
+// 検索欄に打ちながら絞り込むとき、入力の位置を保つ
+function keepFocus(id, fn){
+  const el = document.getElementById(id); const pos = el ? el.selectionStart : null;
+  fn();
+  const el2 = document.getElementById(id);
+  if (el2){ el2.focus(); if (pos != null) try { el2.setSelectionRange(pos, pos); } catch(e){} }
+}
+
+/* ========== パネル（閉じるのは ×・キャンセル・Esc。入力の途中なら確認する） ========== */
+const overlay = document.getElementById("overlay"), panel = document.getElementById("panel");
+let panelDirty = false, panelIsForm = false;
+function openPanel(html, isForm){
+  panel.innerHTML = `<button class="x" data-close aria-label="閉じる">×</button>` + html;
+  overlay.classList.add("show");
+  panelDirty = false; panelIsForm = !!isForm;
+  panel.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closePanel()));
+  if (isForm) panel.addEventListener("input", markDirty);
+}
+function markDirty(){ panelDirty = true; }
+async function closePanel(force){
+  if (!force && panelIsForm && panelDirty && !(await ask("保存せずに閉じますか？", "閉じる"))) return false;
+  panel.removeEventListener("input", markDirty);
+  overlay.classList.remove("show"); panel.innerHTML = ""; panelDirty = false; panelIsForm = false;
+  return true;
+}
+overlay.addEventListener("click", e => { if (e.target === overlay && !panelIsForm) closePanel(); });
+// 日本語の変換中の Esc（変換の取り消し）では閉じない
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || e.isComposing || e.keyCode === 229) return;
+  if (document.getElementById("dlg").classList.contains("show")) { document.getElementById("dlgNo").click(); return; }
+  if (overlay.classList.contains("show")) closePanel();
+});
+
+/* ========== 商品の詳細 ========== */
+function openProductDetail(id){
+  const p = db.products.find(x => x.id === id); if (!p) return;
+  const shop = shopOf(p);
+  const qs = [...new Set([1, 3, 5, 10, qtyNow()])].sort((a, b) => a - b);
+  const c1 = calc(p, 1);
+  const qrows = qs.map(n => { const c = calc(p, n); return `<tr${n === qtyNow() ? ' style="background:var(--gold-soft)"' : ""}>
+    <td class="num">${n}個</td><td class="num">${yen(c.subtotal)}</td><td class="num">${c.discount ? "−" + yen(c.discount) : "—"}</td>
+    <td class="num">${c.ship == null ? "不明" : yen(c.ship)}</td><td class="num">${c.extra ? yen(c.extra) : "—"}</td>
+    <td class="num"><b>${c.total == null ? "不明" : yen(c.total)}</b></td><td class="num">${c.effUnit == null ? "不明" : yen(c.effUnit)}</td></tr>`; }).join("");
+  openPanel(`
+    <h3>${esc(p.name || "（名前なし）")}</h3>
+    <dl class="info">
+      <dt>ショップ</dt><dd>${esc(shopName(p))}${shop && shop.url ? ` （<a href="${esc(shop.url)}" target="_blank" rel="noopener">ショップのページ</a>）` : ""}</dd>
+      <dt>種類・菌種</dt><dd>${esc(p.kind)}・${esc(p.fungus || "不明")}</dd>
+      <dt>容量</dt><dd>${num(p.volumeL) != null ? esc(p.volumeL) + "L" : "—"}</dd>
+      <dt>商品価格</dt><dd>${yen(c1.price)}（1L単価 ${yen(c1.unit)}）</dd>
+      <dt>適合種</dt><dd>${esc(fitsText(p))}${p.fitsSource ? `<span class="sub">根拠：${esc(p.fitsSource)}</span>` : ""}</dd>
+      <dt>特徴</dt><dd>${p.feature ? esc(p.feature).replace(/\n/g, "<br>") : "—"}${p.featureSource ? `<span class="sub">出典：${esc(p.featureSource)}</span>` : ""}</dd>
+      <dt>在庫</dt><dd>${esc(p.stock || "不明")}</dd>
+      <dt>確認日</dt><dd>${esc(p.checkedAt || "—")}</dd>
+      <dt>商品ページ</dt><dd>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url)}</a>` : "—"}</dd>
+      ${p.desc ? `<dt>メモ</dt><dd>${esc(p.desc).replace(/\n/g, "<br>")}</dd>` : ""}
+      <dt>送料の条件</dt><dd>${shop ? esc(shipSummary(shop)) : "—"}</dd>
+      <dt>まとめ買い割引</dt><dd>${shop && shop.discounts.length ? esc(discSummary(shop)) : "なし"}</dd>
+    </dl>
+    <b>数量ごとの購入総額</b><span class="muted">（配送先：${esc(db.settings.region || "未設定")}）</span>
+    <div style="overflow-x:auto"><table class="qtab"><thead><tr><th>数量</th><th>本体</th><th>割引</th><th>送料</th><th>追加料金</th><th>購入総額</th><th>実質1L単価</th></tr></thead><tbody>${qrows}</tbody></table></div>
+    <div class="actions">
+      <button class="btn danger left" id="delP">削除</button>
+      <button class="btn" data-close>閉じる</button>
+      <button class="btn main" id="editP">編集</button>
+    </div>`, false);
+  document.getElementById("editP").addEventListener("click", () => { closePanel(true); openProductForm(p.id); });
+  document.getElementById("delP").addEventListener("click", async () => {
+    if (!(await ask("商品「" + (p.name || "名前なし") + "」を削除しますか？（元に戻せません。バックアップがあれば戻せます）", "削除する"))) return;
+    db.products = db.products.filter(x => x.id !== p.id);
+    if (save()) { closePanel(true); toast("削除しました"); render(); }
+  });
+}
+function shipSummary(s){
+  const parts = [];
+  if (num(s.flatShip) != null) parts.push("全国一律 " + yen(num(s.flatShip)));
+  s.regionShip.filter(r => r.region).forEach(r => parts.push(r.region + " " + yen(num(r.fee))));
+  s.qtyShip.filter(r => num(r.minQty) != null).forEach(r => parts.push(r.minQty + "個以上 " + yen(num(r.fee))));
+  if (num(s.freeOver) != null) parts.push(num(s.freeOver).toLocaleString() + "円以上で無料");
+  if (num(s.extraFee)) parts.push("追加料金 " + yen(num(s.extraFee)) + (s.extraNote ? "（" + s.extraNote + "）" : ""));
+  return parts.length ? parts.join("／") : "送料不明";
+}
+function discSummary(s){
+  return s.discounts.filter(r => num(r.minQty) != null).map(r =>
+    r.minQty + "個以上で" + (r.kind === "percent" ? r.value + "%引き" : r.kind === "perItem" ? "1個" + r.value + "円引き" : r.value + "円引き")).join("／");
+}
+
+/* ========== 商品の入力 ========== */
+function openProductForm(id){
+  if (!db.shops.length){ toast("先に「ショップ管理」でショップを登録してください"); setView("shops"); return; }
+  const p = id ? db.products.find(x => x.id === id) : normProduct({checkedAt: today(), shopId: db.shops.length === 1 ? db.shops[0].id : ""});
+  if (!p) return;
+  const shops = db.shops.slice().sort((a,b) => a.name.localeCompare(b.name, "ja"));
+  openPanel(`
+    <h3>${id ? "商品を編集" : "商品を追加"}</h3>
+    <div class="form">
+      <label>ショップ</label><select id="f_shop"><option value="">選んでください</option>${shops.map(s => `<option value="${esc(s.id)}" ${s.id === p.shopId ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
+      <label>商品名</label><input type="text" id="f_name" value="${esc(p.name)}">
+      <label>種類</label><select id="f_kind">${KINDS.map(k => `<option ${k === p.kind ? "selected" : ""}>${k}</option>`).join("")}</select>
+      <label>菌種</label><input type="text" id="f_fungus" list="dlFungus" value="${esc(p.fungus)}" placeholder="わからなければ空のまま（不明）">
+      <label>容量（L）</label><input type="number" step="0.01" min="0" id="f_vol" value="${esc(p.volumeL == null ? "" : p.volumeL)}">
+      <label>商品価格（円・税込）</label><input type="number" step="1" min="0" id="f_price" value="${esc(p.price == null ? "" : p.price)}">
+      <label>適合種</label><input type="text" id="f_fits" value="${esc(p.fits.join("、"))}" placeholder="ショップに書いてある種類だけ。「、」で区切る。無ければ空（記載なし）">
+      <label>適合種の根拠</label><input type="text" id="f_fitsSrc" value="${esc(p.fitsSource)}" placeholder="ページのどこに書いてあったか（例：説明文「〜に最適」）">
+      <label>在庫</label><select id="f_stock">${STOCKS.map(k => `<option ${k === (p.stock || "不明") ? "selected" : ""}>${k}</option>`).join("")}</select>
+      <label>商品ページのURL</label><input type="url" id="f_url" value="${esc(p.url)}">
+      <label>確認日</label><input type="date" id="f_checked" value="${esc(p.checkedAt)}">
+      <label class="full">特徴</label><textarea class="full" id="f_feature" placeholder="ショップやメーカーのページに書いてある、この商品の特徴（中身・粒の細かさ・向いている使い方など）">${esc(p.feature)}</textarea>
+      <label>特徴の出典</label><input type="text" id="f_featureSrc" value="${esc(p.featureSource)}" placeholder="どのページに書いてあったか">
+      <label class="full">メモ</label><textarea class="full" id="f_desc">${esc(p.desc)}</textarea>
+    </div>
+    <div class="note">適合種は、ショップの商品ページに書いてあるものだけを入れます。菌種から推測して入れないでください。</div>
+    <div id="dupWarn"></div>
+    <div class="actions"><button class="btn" data-close>キャンセル</button><button class="btn main" id="saveP">保存</button></div>`, true);
+  const g = i => document.getElementById(i);
+  const checkDup = () => {
+    const d = findDuplicates({id: p.id, shopId: g("f_shop").value, name: g("f_name").value, url: g("f_url").value, volumeL: num(g("f_vol").value), kind: g("f_kind").value});
+    g("dupWarn").innerHTML = d.length ? `<div class="note" style="border-left-color:var(--danger)">同じかもしれない商品があります：${d.map(x => esc(shopName(x) + "「" + x.name + "」")).join("、")}。別の商品ならそのまま保存してください（自動でまとめたり消したりはしません）。</div>` : "";
+  };
+  ["f_shop","f_name","f_url","f_vol","f_kind"].forEach(i => g(i).addEventListener("change", checkDup));
+  checkDup();
+  g("saveP").addEventListener("click", () => {
+    if (!g("f_shop").value){ toast("ショップを選んでください"); return; }
+    if (!g("f_name").value.trim()){ toast("商品名を入れてください"); return; }
+    const price = num(g("f_price").value), vol = num(g("f_vol").value);
+    if (price != null && price < 0){ toast("価格がおかしいようです"); return; }
+    if (vol != null && vol <= 0){ toast("容量は0より大きい数を入れてください"); return; }
+    const url = g("f_url").value.trim();
+    if (url && !/^https?:\/\//i.test(url)){ toast("URLは http:// か https:// で始めてください"); return; }
+    const next = normProduct(Object.assign({}, p, {
+      shopId: g("f_shop").value, name: g("f_name").value.trim(), kind: g("f_kind").value,
+      fungus: g("f_fungus").value.trim() === "不明" ? "" : g("f_fungus").value.trim(),
+      volumeL: vol, price: price,
+      fits: g("f_fits").value.split(/[、,，\/／]/).map(s => s.trim()).filter(s => s && s !== NONE_FIT),
+      fitsSource: g("f_fitsSrc").value.trim(), feature: g("f_feature").value.trim(), featureSource: g("f_featureSrc").value.trim(), stock: g("f_stock").value, url: url,
+      checkedAt: g("f_checked").value, desc: g("f_desc").value.trim(), updatedAt: nowIso()
+    }));
+    const i = db.products.findIndex(x => x.id === p.id);
+    if (i >= 0) db.products[i] = next; else db.products.push(next);
+    if (save()){ closePanel(true); toast("保存しました"); render(); }
+  });
+}
+// 同じ商品かもしれないもの：同じURL、または同じショップで、名前・容量・種類が同じ
+function findDuplicates(x){
+  const norm = s => String(s || "").replace(/\s+/g, "").toLowerCase();
+  return db.products.filter(p => p.id !== x.id && (
+    (x.url && norm(p.url) === norm(x.url)) ||
+    (x.shopId && p.shopId === x.shopId && norm(p.name) === norm(x.name) && num(p.volumeL) === x.volumeL && p.kind === x.kind)
+  ));
+}
+
+/* ========== ショップ管理 ========== */
+function renderShops(){
+  const shops = db.shops.slice().sort((a,b) => a.name.localeCompare(b.name, "ja"));
+  main.innerHTML = `
+    <h2>ショップ管理</h2>
+    <div class="toolbar"><button class="btn main" id="addShop">＋ ショップを追加</button></div>
+    ${shops.length ? `<div class="cards">${shops.map(s => {
+      const cnt = db.products.filter(p => p.shopId === s.id).length;
+      const st = s.status === "公式サイト確認済み" ? "best" : (s.status === "情報未確認" || s.status === "情報更新待ち") ? "gray" : "warn";
+      return `<div class="card">
+        <h3>${esc(s.name)}</h3>
+        <div><span class="badge ${st}">${esc(s.status)}</span><span class="muted">確認日 ${esc(s.checkedAt || "—")}</span></div>
+        <div class="row">商品 ${cnt}件</div>
+        <div class="row">送料：${esc(shipSummary(s))}</div>
+        <div class="row">割引：${esc(s.discounts.length ? discSummary(s) : "なし")}</div>
+        ${s.url ? `<div class="row"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a></div>` : ""}
+        <div class="actions"><button class="btn small" data-edit="${esc(s.id)}">編集</button></div>
+      </div>`; }).join("")}</div>` : `<div class="empty">まだショップがありません。「＋ ショップを追加」から登録してください。</div>`}`;
+  document.getElementById("addShop").addEventListener("click", () => openShopForm(null));
+  main.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => openShopForm(b.dataset.edit)));
+}
+function ruleRow(type, r){
+  if (type === "region") return `<div class="r"><input type="text" placeholder="地域（例：北海道）" value="${esc(r.region || "")}" data-k="region"><input type="number" placeholder="送料（円）" value="${esc(r.fee ?? "")}" data-k="fee">円 <button class="btn small" data-delrule>消す</button></div>`;
+  if (type === "qty") return `<div class="r"><input type="number" min="1" placeholder="個数" value="${esc(r.minQty ?? "")}" data-k="minQty">個以上で送料 <input type="number" placeholder="送料（円）" value="${esc(r.fee ?? "")}" data-k="fee">円 <button class="btn small" data-delrule>消す</button></div>`;
+  return `<div class="r"><input type="number" min="1" placeholder="個数" value="${esc(r.minQty ?? "")}" data-k="minQty">個以上で
+    <input type="number" placeholder="値" value="${esc(r.value ?? "")}" data-k="value">
+    <select data-k="kind"><option value="percent" ${r.kind === "percent" ? "selected" : ""}>%引き</option><option value="perItem" ${r.kind === "perItem" ? "selected" : ""}>円引き（1個あたり）</option><option value="total" ${r.kind === "total" ? "selected" : ""}>円引き（合計から）</option></select>
+    <button class="btn small" data-delrule>消す</button></div>`;
+}
+function openShopForm(id){
+  const s = id ? db.shops.find(x => x.id === id) : normShop({checkedAt: today()});
+  if (!s) return;
+  openPanel(`
+    <h3>${id ? "ショップを編集" : "ショップを追加"}</h3>
+    <div class="form">
+      <label>ショップ名</label><input type="text" id="s_name" value="${esc(s.name)}">
+      <label>ショップのURL</label><input type="url" id="s_url" value="${esc(s.url)}">
+      <label>確認状態</label><select id="s_status">${SHOP_STATUS.map(k => `<option ${k === s.status ? "selected" : ""}>${k}</option>`).join("")}</select>
+      <label>確認日</label><input type="date" id="s_checked" value="${esc(s.checkedAt)}">
+      <label>全国一律の送料（円）</label><input type="number" min="0" id="s_flat" value="${esc(s.flatShip ?? "")}" placeholder="わからなければ空">
+      <label>送料無料になる金額（円以上）</label><input type="number" min="0" id="s_free" value="${esc(s.freeOver ?? "")}" placeholder="無ければ空">
+      <label>追加料金（円）</label><input type="number" min="0" id="s_extra" value="${esc(s.extraFee || "")}" placeholder="クール便など。無ければ空">
+      <label>追加料金の内容</label><input type="text" id="s_extraNote" value="${esc(s.extraNote)}" placeholder="例：夏はクール便">
+      <label class="full">地域ごとの送料（配送先の地域と同じ名前のときに使います。「関東、東京、神奈川」のように「、」で複数書けます）</label>
+      <div class="full rules" id="r_region">${s.regionShip.map(r => ruleRow("region", r)).join("")}</div>
+      <div class="full"><button class="btn small" data-addrule="region">＋ 地域を足す</button></div>
+      <label class="full">個数で変わる送料（いちばん大きい「◯個以上」を使います）</label>
+      <div class="full rules" id="r_qty">${s.qtyShip.map(r => ruleRow("qty", r)).join("")}</div>
+      <div class="full"><button class="btn small" data-addrule="qty">＋ 個数の送料を足す</button></div>
+      <label class="full">まとめ買い割引（いちばん大きい「◯個以上」を使います）</label>
+      <div class="full rules" id="r_disc">${s.discounts.map(r => ruleRow("disc", r)).join("")}</div>
+      <div class="full"><button class="btn small" data-addrule="disc">＋ 割引を足す</button></div>
+      <label class="full">メモ</label><textarea class="full" id="s_memo">${esc(s.memo)}</textarea>
+    </div>
+    <div class="note">送料の計算の順番：①送料無料の金額に届いたら0円 → ②個数で変わる送料 → ③配送先の地域の送料 → ④全国一律。どれも無ければ「送料不明」になり、送料込みの比較から外れます。</div>
+    <div class="actions">
+      ${id ? `<button class="btn danger left" id="delS">削除</button>` : ""}
+      <button class="btn" data-close>キャンセル</button><button class="btn main" id="saveS">保存</button></div>`, true);
+  const g = i => document.getElementById(i);
+  const boxes = {region: "r_region", qty: "r_qty", disc: "r_disc"};
+  const bindDel = () => panel.querySelectorAll("[data-delrule]").forEach(b => b.onclick = () => { b.parentElement.remove(); panelDirty = true; });
+  panel.querySelectorAll("[data-addrule]").forEach(b => b.addEventListener("click", () => {
+    const t = b.dataset.addrule;
+    g(boxes[t]).insertAdjacentHTML("beforeend", ruleRow(t, t === "disc" ? {kind:"percent"} : {}));
+    bindDel(); panelDirty = true;
+  }));
+  bindDel();
+  const readRules = boxId => [...g(boxId).querySelectorAll(".r")].map(r => {
+    const o = {}; r.querySelectorAll("[data-k]").forEach(i => { o[i.dataset.k] = i.tagName === "SELECT" ? i.value : (i.type === "number" ? num(i.value) : i.value.trim()); }); return o;
+  });
+  g("saveS").addEventListener("click", () => {
+    if (!g("s_name").value.trim()){ toast("ショップ名を入れてください"); return; }
+    const url = g("s_url").value.trim();
+    if (url && !/^https?:\/\//i.test(url)){ toast("URLは http:// か https:// で始めてください"); return; }
+    const next = normShop(Object.assign({}, s, {
+      name: g("s_name").value.trim(), url, status: g("s_status").value, checkedAt: g("s_checked").value,
+      flatShip: num(g("s_flat").value), freeOver: num(g("s_free").value), extraFee: num(g("s_extra").value) || 0, extraNote: g("s_extraNote").value.trim(),
+      regionShip: readRules("r_region").filter(r => r.region && r.fee != null),
+      qtyShip: readRules("r_qty").filter(r => r.minQty != null && r.fee != null),
+      discounts: readRules("r_disc").filter(r => r.minQty != null && r.value != null),
+      memo: g("s_memo").value.trim(), updatedAt: nowIso()
+    }));
+    const i = db.shops.findIndex(x => x.id === s.id);
+    if (i >= 0) db.shops[i] = next; else db.shops.push(next);
+    if (save()){ closePanel(true); toast("保存しました"); render(); }
+  });
+  if (id) g("delS").addEventListener("click", async () => {
+    const cnt = db.products.filter(p => p.shopId === s.id).length;
+    if (cnt){ await tell("このショップには商品が " + cnt + "件あります。先に商品を消すか、別のショップに付け替えてください。"); return; }
+    if (!(await ask("ショップ「" + s.name + "」を削除しますか？", "削除する"))) return;
+    db.shops = db.shops.filter(x => x.id !== s.id);
+    if (save()){ closePanel(true); toast("削除しました"); render(); }
+  });
+}
+
+/* ========== 設定・バックアップ ========== */
+function renderSettings(){
+  main.innerHTML = `
+    <h2>設定・バックアップ</h2>
+    <div class="card" style="max-width:640px;margin-bottom:14px">
+      <h3>配送先の地域</h3>
+      <div class="muted">ショップの「地域ごとの送料」に書いた名前のどれかと同じ名前を入れると、その送料で計算します（例：東京）。</div>
+      <div class="toolbar" style="margin-top:8px"><input type="text" id="region" value="${esc(db.settings.region)}" placeholder="例：関東"><button class="btn main" id="saveRegion">保存</button></div>
+    </div>
+    <div class="card" style="max-width:640px;margin-bottom:14px">
+      <h3>データの集め直し</h3>
+      <div class="muted">値段・在庫・新しい商品・新しい店は、自動では新しくなりません。「収集を頼む」を押すと、Claude への頼み文がコピーされます。パソコンの Claude（10_クワガタ のフォルダ）に貼って送ると、集め直して新しい取り込み用ファイルを作ります。できたファイルを下の「バックアップから戻す」で読み込むと、中身が全部入れ替わります（このアプリで自分で直した所も入れ替わります）。</div>
+      <div class="muted" style="margin-top:6px">いちばん新しい確認日：${esc(latestChecked() || "—")}</div>
+      <div class="actions" style="justify-content:flex-start"><button class="btn gold" id="collect2">収集を頼む（頼み文をコピー）</button></div>
+    </div>
+    <div class="card" style="max-width:640px">
+      <h3>バックアップ</h3>
+      <div class="muted">今はデータがこの端末のブラウザの中だけにあります。ブラウザのデータを消すと消えるので、ときどき書き出してください。PCとiPhoneの同期（Googleドライブ）は次の段階で足します。</div>
+      <div class="muted" style="margin-top:6px">今の件数：ショップ ${db.shops.length}件・商品 ${db.products.length}件</div>
+      <div class="actions" style="justify-content:flex-start">
+        <button class="btn main" id="exportJ">バックアップを書き出す（JSON）</button>
+        <label class="btn" style="position:relative">バックアップから戻す<input type="file" id="importJ" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden"></label>
+      </div>
+    </div>`;
+  document.getElementById("saveRegion").addEventListener("click", () => { db.settings.region = document.getElementById("region").value.trim(); if (save()) toast("保存しました"); });
+  document.getElementById("collect2").addEventListener("click", requestCollect);
+  document.getElementById("exportJ").addEventListener("click", exportJson);
+  document.getElementById("importJ").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importJson(f); });
+}
+/* 収集を頼む：集め直しはパソコンの Claude と NotebookLM がするので、アプリは頼み文を作ってコピーするだけ */
+function latestChecked(){ return db.products.map(p => p.checkedAt || "").sort().pop() || ""; }
+async function requestCollect(){
+  const text = "菌糸・マット総合カタログの収集をして。手順は 10_クワガタ/菌糸・マット総合カタログ/収集/収集の手順.md に従って。" +
+    `（アプリの今のデータ：ショップ${db.shops.length}件・商品${db.products.length}件、いちばん新しい確認日 ${latestChecked() || "不明"}）`;
+  let copied = false;
+  try { if (navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); copied = true; } } catch(e){}
+  if (copied) await tell("頼み文をコピーしました。\n\nパソコンの Claude（10_クワガタ のフォルダで開いたもの）に貼って送ってください。集め直しには1〜2時間ほどかかります。終わると、新しい取り込み用ファイルと「更新の結果」のノートができます。");
+  else await askText("下の頼み文を長押しなどでコピーして、パソコンの Claude に貼って送ってください。", text);
+}
+function exportJson(){
+  const d = new Date(), pad = x => String(x).padStart(2, "0");
+  const name = `kinshi-catalog-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  const blob = new Blob([JSON.stringify(Object.assign({exportedAt: nowIso(), app: "kinshi-catalog"}, db), null, 2)], {type: "application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast("書き出しました：" + name);
+}
+function importJson(file){
+  const r = new FileReader();
+  r.onload = async () => {
+    let d;
+    try { d = JSON.parse(String(r.result).replace(/^﻿/, "")); } catch(e){ await tell("JSONとして読めませんでした。"); return; }
+    if (!d || d.app !== "kinshi-catalog"){ await tell("このアプリのバックアップではないようです。"); return; }
+    const n = normalize(d);
+    const hasNow = db.shops.length + db.products.length > 0;
+    if (!(await ask(`バックアップ（${d.exportedAt ? String(d.exportedAt).slice(0, 16).replace("T", " ") : "日時不明"}）から戻します。\n\n戻す内容：ショップ ${n.shops.length}件・商品 ${n.products.length}件\n今の内容：ショップ ${db.shops.length}件・商品 ${db.products.length}件\n\n${hasNow ? "今の内容は、戻す直前に自動で書き出します。" : ""}よろしいですか？`, "戻す"))) return;
+    if (hasNow) { try { exportJson(); } catch(e){} }   // 戻す直前の状態を残す（空なら書き出さない）
+    db = n;
+    if (save()){ toast("戻しました：ショップ " + n.shops.length + "件・商品 " + n.products.length + "件"); render(); }
+  };
+  r.onerror = () => tell("ファイルを読めませんでした。");
+  r.readAsText(file);
+}
+
+/* ========== 起動 ========== */
+setView(["products", "shops", "settings"].includes(ui.view) ? ui.view : "products");
+</script>
+</body>
+</html>
