@@ -732,11 +732,16 @@ function childLine(a, b) {
 // 印刷するもの（#printArea）だけの別のページを開き、そこで印刷する（2026-11-23 あっきーさんの希望。iPhoneでの動きは要確認）
 // 原因を調べるため、エラーが起きたら画面に出す（2026-11-23。iPhoneの印刷の原因がわかったら外す）
 window.addEventListener("error", e => { try { toast("エラー：" + (e.message || "") + "（" + (e.lineno || "") + "行）", 10000); } catch {} });
+// iPhone（WebKit）は、通信や読み込みの途中だと印刷を後回しにする。何件の通信が終わっていないかを数える（調べるため）
+window.__inflight = 0;
+if (window.fetch) { const f0 = window.fetch.bind(window); window.fetch = (...a) => { window.__inflight++; return f0(...a).finally(() => { window.__inflight--; }); }; }
+window.addEventListener("beforeprint", () => { try { toast("印刷の準備ができました", 3000); } catch {} });
 function doPrint() {
   // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
   // iPhoneで印刷が出ない原因を調べるため、押されたことと、エラーを画面に出す（2026-11-23。原因がわかったら外す）
   if (!window.__forceStandalonePrint) {
-    toast("印刷の画面を開いています…（" + ($("printArea").innerHTML.length ? "中身あり" : "中身なし") + "）", 4000);
+    const imgs = [...document.images].filter(i => !i.complete).length;
+    toast(`印刷の画面を開いています…（${$("printArea").innerHTML.length ? "中身あり" : "中身なし"}・${document.readyState}・通信中${window.__inflight}件・画像読み込み中${imgs}枚）`, 6000);
     try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); }
     return;
   }
