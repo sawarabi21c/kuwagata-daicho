@@ -735,13 +735,16 @@ window.addEventListener("error", e => { try { toast("エラー：" + (e.message 
 // iPhone（WebKit）は、通信や読み込みの途中だと印刷を後回しにする。何件の通信が終わっていないかを数える（調べるため）
 window.__inflight = 0;
 if (window.fetch) { const f0 = window.fetch.bind(window); window.fetch = (...a) => { window.__inflight++; return f0(...a).finally(() => { window.__inflight--; }); }; }
-window.addEventListener("beforeprint", () => { try { toast("印刷の準備ができました", 3000); } catch {} });
+window.addEventListener("beforeprint", () => { window.__printing = true; try { toast("印刷の準備ができました", 3000); } catch {} });
+window.addEventListener("afterprint", () => { window.__printing = false; });
 function doPrint() {
   // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
   // iPhoneで印刷が出ない原因を調べるため、押されたことと、エラーを画面に出す（2026-11-23。原因がわかったら外す）
   if (!window.__forceStandalonePrint) {
     const imgs = [...document.images].filter(i => !i.complete).length;
     toast(`印刷の画面を開いています…（${$("printArea").innerHTML.length ? "中身あり" : "中身なし"}・${document.readyState}・通信中${window.__inflight}件・画像読み込み中${imgs}枚）`, 6000);
+    // 印刷のあいだは、プレビューの作り直し（watchPreview）を止める
+    window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
     try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); }
     return;
   }
@@ -3651,7 +3654,15 @@ function lbOptsHtml(o) {
 // 枠の幅が変わったら（開いた直後など）プレビューを作り直す
 function watchPreview(wrap, fn) {
   if (!wrap || wrap._ro || typeof ResizeObserver === "undefined") return;
-  wrap._ro = new ResizeObserver(() => { const w = wrap.clientWidth; if (w && w !== wrap._w) { wrap._w = w; fn(); } });
+  // iPhoneでは、ここが何度も続けて動いて（ResizeObserver のエラー）、印刷の画面が出なかった（2026-11-23）。
+  // 印刷している間は動かさない・2px未満の変化は無視する・作り直しは次の描画のときにする
+  wrap._ro = new ResizeObserver(() => {
+    if (window.__printing) return;
+    const w = wrap.clientWidth;
+    if (!w || Math.abs(w - (wrap._w || 0)) < 2) return;
+    wrap._w = w;
+    cancelAnimationFrame(wrap._raf); wrap._raf = requestAnimationFrame(() => { if (!window.__printing) fn(); });
+  });
   wrap._ro.observe(wrap);
 }
 function updateLabels() {
