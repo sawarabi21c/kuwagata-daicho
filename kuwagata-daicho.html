@@ -464,13 +464,16 @@ label.unit.days::after { bottom: 9px; }
 .dd-item small { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .dd-item:hover, .dd-item.on { background: var(--line); }
 .dd-none { padding: 9px 10px; font-size: 13px; color: var(--muted); }
-.print-only { display: none; }
+/* 印刷するもの（#printArea）は、画面の外に置いて見えなくする（display:none にしない）。
+   iPhoneは、印刷を始めたときに文字（ウェブフォント）の読み込みが残っていると、印刷の画面を出さないまま止まるため、
+   先に画面の外で文字を読み込ませておく（2026-11-23） */
+.print-only { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
 @page labels { size: A4; margin: 0; }
 @media print {
   @page { size: A4; margin: 10mm; }
   body { background: #fff; }
   body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; }
+  #printArea { display: block !important; position: static !important; left: auto !important; visibility: visible !important; }
   #printArea .sheets { gap: 5mm; }
   html { padding: 0; }
   .lbl-page { page: labels; break-after: page; }
@@ -741,11 +744,16 @@ function doPrint() {
   // 2026-11-23：別のページを開く形はiPhoneで印刷できなかったので、あっきーさんの希望で前と同じ window.print() に戻した（下は使っていない）
   // iPhoneで印刷が出ない原因を調べるため、押されたことと、エラーを画面に出す（2026-11-23。原因がわかったら外す）
   if (!window.__forceStandalonePrint) {
+    void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
+    const fontsLoading = document.fonts && document.fonts.status === "loading";
     const imgs = [...document.images].filter(i => !i.complete).length;
-    toast(`印刷の画面を開いています…（${$("printArea").innerHTML.length ? "中身あり" : "中身なし"}・${document.readyState}・通信中${window.__inflight}件・画像読み込み中${imgs}枚）`, 6000);
+    toast(`印刷の画面を開いています…（${$("printArea").innerHTML.length ? "中身あり" : "中身なし"}・${document.readyState}・通信中${window.__inflight}件・画像読み込み中${imgs}枚・文字${fontsLoading ? "読み込み中" : "OK"}）`, 6000);
     // 印刷のあいだは、プレビューの作り直し（watchPreview）を止める
     window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
-    try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); }
+    const go = () => { try { window.print(); } catch (err) { toast("印刷できませんでした：" + (err && err.message || err), 8000); } };
+    // 文字の読み込みが終わってから印刷する（最大5秒待つ）
+    if (fontsLoading) Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
+    else go();
     return;
   }
   const css = [...document.querySelectorAll("style")].map(s => s.textContent).join("\n");
