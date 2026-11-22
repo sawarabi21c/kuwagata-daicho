@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>クワガタ飼育台帳</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -53,7 +53,9 @@
 }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+/* スマホ（指で操作する端末）：入力欄の文字を16pxにする。iPhoneは16pxより小さい入力欄を押すと画面を拡大して、画面が動いてしまうため（2026-11-23） */
+@media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
 .wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; color: inherit; }
