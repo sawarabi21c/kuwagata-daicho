@@ -53,7 +53,8 @@
 }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -355,7 +356,6 @@ label.unit.days::after { bottom: 9px; }
 .lbl-sex { font-weight: 700; font-size: 12pt; }
 .lbl-sex.m { color: #2f6db5; } .lbl-sex.f { color: #c0426b; }
 .lbl-stage { margin-left: auto; font-size: 8.2pt; color: #5d6860; white-space: nowrap; }
-.lbl-line { color: #1a1e1b; font-family: var(--f-data); font-weight: 700; font-size: 10pt; }
 .lbl-sp { font-weight: 700; font-size: 8.6pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lbl-par { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; font-family: var(--f-data); font-size: 7.4pt; }
 .lbl-par span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -461,16 +461,13 @@ label.unit.days::after { bottom: 9px; }
 .dd-item small { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .dd-item:hover, .dd-item.on { background: var(--line); }
 .dd-none { padding: 9px 10px; font-size: 13px; color: var(--muted); }
-/* 印刷するもの（#printArea）は、画面の外に置いて見えなくする（display:none にしない）。
-   iPhoneは、印刷を始めたときに文字（ウェブフォント）の読み込みが残っていると、印刷の画面を出さないまま止まるため、
-   先に画面の外で文字を読み込ませておく（2026-11-23） */
-.print-only { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
+.print-only { display: none; }
 @page labels { size: A4; margin: 0; }
 @media print {
   @page { size: A4; margin: 10mm; }
   body { background: #fff; }
   body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; position: static !important; left: auto !important; visibility: visible !important; }
+  #printArea { display: block !important; }
   #printArea .sheets { gap: 5mm; }
   html { padding: 0; }
   .lbl-page { page: labels; break-after: page; }
@@ -728,48 +725,6 @@ function childLine(a, b) {
   return p + (Math.max(...list.map(v => v.n)) + 1);
 }
 
-// 印刷（2026-11-23）
-// ・iPhoneのホーム画面に追加したアプリ（navigator.standalone）は、iPhoneのしくみで印刷できない（何も起きない）。
-//   印刷用の別のページを開く形も試したが、そこからも刷れなかった。なので「Safariで開いて印刷してください」と伝え、Safariを開くボタンを出す。
-// ・Safari・PCは印刷できる。iPhoneのSafariは、文字（ウェブフォント）の読み込み中に印刷を頼むと止まるので、読み込みを待ってから頼む。
-//   印刷のあいだは、プレビューの作り直し（watchPreview）を止める（作り直しが続くと、iPhoneで印刷の画面が出なかった）。
-window.addEventListener("beforeprint", () => { window.__printing = true; });
-window.addEventListener("afterprint", () => { window.__printing = false; });
-function doPrint() {
-  // ホーム画面のアプリでも、前と同じようにそのまま印刷する（2026-11-23 あっきーさんの希望。Safariへ案内する形 standalonePrintHelp はやめた）
-  void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
-  window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
-  const go = () => { try { window.print(); } catch { toast("印刷できませんでした。PCかSafariで開いて印刷してください", 6000); } };
-  if (document.fonts && document.fonts.status === "loading") Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
-  else go();
-}
-// Safariで同じ印刷の画面を開くための「#print=…」（選んだ個体・開始位置・ラベルの種類・価格など）。runRoute が受け取って開く（2026-11-23）
-function printRoute() {
-  const m = state.mode, q = new URLSearchParams();
-  const checked = sel => [...document.querySelectorAll(sel + ":checked")].map(c => c.dataset.id).join(",");
-  q.set("print", m);
-  if (m === "labels") { q.set("ids", checked(".lb-pick")); q.set("start", $("lbStart")?.value || "1"); q.set("blank", $("lbBlank")?.value || "0"); q.set("lo", JSON.stringify(labelOpts())); }
-  else if (m === "pairLabels") { q.set("ids", checked(".pl-pick")); q.set("start", $("plStart")?.value || "1"); q.set("blank", $("plBlank")?.value || "0"); q.set("qr", state.plQr === false ? "0" : "1"); }
-  else if (m === "sheet") q.set("ids", state.sheetIds.join(","));
-  else if (m === "care") q.set("ids", state.careIds.join(","));
-  else if (m === "year") q.set("y", String(state.moneyYear));
-  else if (m === "sp") {
-    q.set("kind", state.spKind); q.set("ids", state.spIds.join(",")); q.set("g", JSON.stringify(state.spGroups || [])); q.set("pr", JSON.stringify(state.spPrices || {}));
-    q.set("qr", state.spQr === false ? "0" : "1");
-    if ($("spStart")) q.set("start", $("spStart").value);
-    if ($("spFrom")) { q.set("from", $("spFrom").value); q.set("to", $("spTo").value); }
-  } else return "";
-  return q.toString();
-}
-// ホーム画面のアプリで印刷ボタンを押したとき：Safariで開くように案内する（ホーム画面のアプリの外へ出るリンクは、Safariで開く）
-function standalonePrintHelp() {
-  $("termsBox").innerHTML = `<h2 id="termsTitle">Safariで開いて印刷してください</h2>
-    <p>iPhoneのホーム画面に追加したアプリからは、iPhoneのしくみで印刷ができません。</p>
-    <p>下のボタンでSafariが開き、同じ印刷の画面（選んだものもそのまま）が出ます。「印刷する」を押してください。</p>
-    <p class="hint">Safariの台帳は、ホーム画面のアプリとは別に記録をしまっています。Safariでも「バックアップ・同期」から一度Googleにつないでおくと、同じ記録が出ます。</p>
-    <div class="row end"><button class="btn" type="button" data-terms-close>閉じる</button><a class="btn primary" href="${esc(APP_URL + (printRoute() ? "#" + printRoute() : ""))}" target="_blank" rel="noopener">Safariで開く</a></div>`;
-  $("terms").hidden = false; $("termsBox").scrollTop = 0;
-}
 function toast(msg, ms = 2400) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms);
@@ -982,7 +937,7 @@ const qrFor = route => QR.svg(`${APP_URL}#${route}`);
 /* ---------- QRコードから開いたとき（#b=個体 ／ #p=ペア ／ #sell=個体,個体&price=金額） ---------- */
 // アドレスの # の後ろを覚えておき（Googleにつなぎ直すために一度ページを移っても残るように）、記録を読み終えてから画面を開く
 function takeRoute() {
-  if (!/^#(b|p|sell|print)=/.test(location.hash)) return;
+  if (!/^#(b|p|sell)=/.test(location.hash)) return;
   try { sessionStorage.setItem("kuwagata:route", location.hash.slice(1)); } catch {}
   history.replaceState(null, "", location.pathname + location.search);
 }
@@ -1000,36 +955,6 @@ function runRoute(final = false) {
     const p = state.pairs.find(x => x.id === q.get("p"));
     if (!p) { if (final) { toast("このペアは、この端末の台帳にありません（同期を確かめてください）"); return done(); } return false; }
     state.view = "pairs"; render(); openPanel(p.id, "pair"); return done();
-  }
-  // ホーム画面のアプリから「Safariで開く」で来たとき：同じ印刷の画面を、同じ選び方で開く
-  if (q.get("print")) {
-    const m = q.get("print"), ids = (q.get("ids") || "").split(",").filter(Boolean);
-    const pool = m === "pairLabels" ? state.pairs : state.beetles;
-    const found = ids.filter(id => pool.some(x => x.id === id));
-    if (found.length < ids.length && !final) return false;
-    if (found.length < ids.length) toast("この端末（Safari）の台帳に無い記録は外しました。Safariでも同期しているか確かめてください", 6000);
-    const js = (k, d) => { try { return JSON.parse(q.get(k) || ""); } catch { return d; } };
-    const setVal = (id, v) => { if ($(id) && v !== null && v !== undefined) $(id).value = v; };
-    if (m === "labels") {
-      if (q.get("lo")) meta.set("labelOpts", q.get("lo"));
-      openPanel(null, "labels"); state.labelIds = found; renderPanel();
-      setVal("lbStart", q.get("start")); setVal("lbBlank", q.get("blank")); updateLabels();
-    } else if (m === "pairLabels") {
-      state.plQr = q.get("qr") !== "0";
-      openPanel(null, "pairLabels"); state.pairLabelIds = found; renderPanel();
-      setVal("plStart", q.get("start")); setVal("plBlank", q.get("blank")); updatePairLabels();
-    } else if (m === "sheet" || m === "care") {
-      openPanel(null, m); state[m === "sheet" ? "sheetIds" : "careIds"] = found; renderPanel();
-    } else if (m === "year") {
-      state.moneyYear = +q.get("y") || state.moneyYear; state.view = "money"; render(); openPanel(null, "year");
-    } else if (m === "sp") {
-      state.spQr = q.get("qr") !== "0";
-      openPanel(null, "sp"); state.spKind = q.get("kind") || "stock"; state.spIds = found; state.spGroups = js("g", []); state.spPrices = js("pr", {}); renderPanel();
-      setVal("spStart", q.get("start")); setVal("spFrom", q.get("from")); setVal("spTo", q.get("to")); updateSp();
-    }
-    $("panel").scrollTop = 0;
-    if (found.length === ids.length) toast("同じ印刷の画面を開きました。「印刷する」を押してください", 5000);
-    return done();
   }
   if (q.get("sell")) {
     const ids = q.get("sell").split(",").filter(Boolean), found = ids.map(id => state.beetles.find(x => x.id === id)).filter(Boolean);
@@ -3289,7 +3214,7 @@ function carePanel() {
 function printCare() {
   const list = state.careIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(careHtml).join("")}</div>`;
-  doPrint();
+  window.print();
 }
 /* ---------- 何世代でも遡れる血統表（改善⑱：画面で見るだけ。印刷はしない） ---------- */
 // はじめは3代。チェックで4代目・5代目…と増やす（この端末に覚える）。台帳にいる先祖は名前でどこまでもたどり、
@@ -3541,7 +3466,7 @@ function updateSp() {
 function printSp() {
   if (state.spKind !== "sold" && !spItems().length) return toast("印刷する個体を選んでください");
   $("printArea").innerHTML = spHtml();
-  doPrint();
+  window.print();
 }
 function sheetPanel() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
@@ -3609,13 +3534,13 @@ function labelCell(b, o = labelOpts()) {
   // QRコード（右上）：iPhoneのカメラで読むと、この個体の画面が開く。空のラベルには付けない
   const qr = o.mgmt.qr && b.id ? `<div class="lbl-qr">${qrFor("b=" + b.id)}</div>` : "";
   return `<div class="lbl${qr ? " has-qr" : ""}">${qr}
-    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}<span class="lbl-stage">${b.line ? `<b class="lbl-line">${esc(b.line)}</b>` : ""}${esc((adultNote + nextNote).replace(/^ ・ /, b.line ? " ・ " : ""))}</span></div>
-    <div class="lbl-sp">${esc([b.species, b.locality].filter(Boolean).join(" ・ "))}</div>
+    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}<span class="lbl-stage">${esc((b.stage || "") + adultNote + nextNote)}</span></div>
+    <div class="lbl-sp">${esc([b.species, b.locality, b.line].filter(Boolean).join(" ・ "))}</div>
     <div class="lbl-par"><span>♂ ${esc(parent(b.fatherName, b.fatherSize))}</span><span>♀ ${esc(parent(b.motherName, b.motherSize))}</span></div>
     <table class="lbl-ex">
       <colgroup><col class="c-k"><col class="c-d"><col class="c-g"><col><col class="c-b"></colgroup>
       <tr class="hd"><th></th><th>日付</th><th>g数</th><th>えさ・添加剤</th><th>ボトル</th></tr>
-      <tr><th>割出</th><td>${esc(shortDate(b.harvestDate))}</td><td colspan="3" class="l"><span class="k">孵化</span> ${esc(shortDate(b.hatchDate))}</td></tr>
+      <tr><th>孵化</th><td>${esc(shortDate(b.hatchDate))}</td><td colspan="3" class="l"><span class="k">割り出し</span> ${esc(shortDate(b.harvestDate))}</td></tr>
       ${ex.map((l, i) => `<tr><th>${from + i + 1}回目</th><td>${l ? esc(shortDate(l.date)) : ""}</td><td>${l ? g(l.weight) : ""}</td><td class="l">${l ? esc(feedOn(l)) : ""}</td><td>${l ? esc(fmtCont(l.container) || l.bottle || "") : ""}</td></tr>`).join("")}
       <tr><th>蛹化</th><td>${esc(shortDate(b.pupationDate))}</td><td>${g(b.pupaWeight)}</td><td colspan="2"></td></tr>
       <tr><th>羽化</th><td>${esc(shortDate(b.eclosionDate))}</td><td colspan="3" class="l"><span class="k">大きさ</span> ${b.sizeMm ? esc(b.sizeMm + "mm") : ""}${isAdult(b) ? head : ""}</td></tr>
@@ -3688,15 +3613,7 @@ function lbOptsHtml(o) {
 // 枠の幅が変わったら（開いた直後など）プレビューを作り直す
 function watchPreview(wrap, fn) {
   if (!wrap || wrap._ro || typeof ResizeObserver === "undefined") return;
-  // iPhoneでは、ここが何度も続けて動いて（ResizeObserver のエラー）、印刷の画面が出なかった（2026-11-23）。
-  // 印刷している間は動かさない・2px未満の変化は無視する・作り直しは次の描画のときにする
-  wrap._ro = new ResizeObserver(() => {
-    if (window.__printing) return;
-    const w = wrap.clientWidth;
-    if (!w || Math.abs(w - (wrap._w || 0)) < 2) return;
-    wrap._w = w;
-    cancelAnimationFrame(wrap._raf); wrap._raf = requestAnimationFrame(() => { if (!window.__printing) fn(); });
-  });
+  wrap._ro = new ResizeObserver(() => { const w = wrap.clientWidth; if (w && w !== wrap._w) { wrap._w = w; fn(); } });
   wrap._ro.observe(wrap);
 }
 function updateLabels() {
@@ -3722,13 +3639,13 @@ function printLabels() {
   const picked = labelItems();
   if (!picked.length) return toast("個体を選ぶか、空のラベルの枚数を入れてください");
   $("printArea").innerHTML = labelPagesHtml(picked, +$("lbStart").value || 1);
-  doPrint();
+  window.print();
 }
 
 function printSheets() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(sheetHtml).join("")}</div>`;
-  doPrint();
+  window.print();
 }
 
 function backupPanel() {
@@ -4603,7 +4520,7 @@ document.addEventListener("click", e => {
     const picked = pairLabelItems();
     if (!picked.length) return toast("ペアを選ぶか、空のラベルの枚数を入れてください");
     $("printArea").innerHTML = pairLabelPagesHtml(picked, +$("plStart").value || 1);
-    return doPrint();
+    return window.print();
   }
   if (t.dataset.treesave) {
     const b = structuredClone(state.beetles.find(x => x.id === t.dataset.treesave));
@@ -4621,7 +4538,7 @@ document.addEventListener("click", e => {
     save(b).then(ok => ok && toast("血統の入力を保存しました"));
     return;
   }
-  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return doPrint(); }
+  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return window.print(); }
   if (t.hasAttribute("data-spgroup") || t.hasAttribute("data-spungroup")) {
     const ids = [...document.querySelectorAll(".sp-pick:checked")].map(c => c.dataset.id);
     if (t.hasAttribute("data-spgroup") && ids.length < 2) return toast("組にする個体を2頭以上選んでください");
@@ -5261,23 +5178,15 @@ render();
   render();
   if (meta.get("termsAgreed") !== TERMS_VER) showTerms(true);
   renderSyncInfo();
+  state.routeWait = !runRoute(!(syncOn() && canSync() && syncAuto()));
+  // 同期が動かなかったときのために、少し待ってからもう一度ためす
+  if (state.routeWait) setTimeout(() => { if (state.routeWait && !state.sync.busy) { state.routeWait = false; runRoute(true); } }, 8000);
   // 同期：自動の端末は開いたときに読み込む。つなぎ直しが要るときは、前に許可していれば画面を出さずにつなぎ直す（1回だけ）
-  const autoSync = syncOn() && canSync() && syncAuto();
-  let tried = false; try { tried = sessionStorage.getItem("kuwagata:silentTried") === "1"; } catch {}
-  const silent = autoSync && !syncReady() && meta.get("syncConsented") === "1" && !tried && navigator.onLine;
-  // QRから開いたとき：Googleへつなぎ直しに行くなら、画面はまだ開かない（戻ってきてから開く）。
-  // 先に開くと、Googleへ移ったときに消えて、QRを2回読まないと開かなかった（2026-11-23 直した）
-  if (!silent) {
-    state.routeWait = !runRoute(!(autoSync && syncReady()));
-    // 同期が動かなかったときのために、少し待ってからもう一度ためす
-    if (state.routeWait) setTimeout(() => { if (state.routeWait && !state.sync.busy) { state.routeWait = false; runRoute(true); } }, 8000);
-  }
-  if (autoSync) {
+  if (syncOn() && canSync() && syncAuto()) {
+    let tried = false; try { tried = sessionStorage.getItem("kuwagata:silentTried") === "1"; } catch {}
     if (syncReady()) syncNow();
-    else if (silent) syncConnect(true);
+    else if (meta.get("syncConsented") === "1" && !tried && navigator.onLine) syncConnect(true);
   }
-  // すでに開いているページで、別のQRを読んだとき（アドレスの # だけが変わる）
-  window.addEventListener("hashchange", () => { takeRoute(); if (state.loaded) runRoute(true); });
 })();
 </script>
 </body>
