@@ -737,10 +737,20 @@ window.addEventListener("afterprint", () => { window.__printing = false; });
 // iPhone・iPadのSafariは「@page labels」（余白0の用紙）を使えず、ふつうの余白10mmの中に210mm幅のラベル用紙を入れようとして、
 // 全体を縮めて印刷していた（2026-11-24 あっきーさん「サイズが小さい」）。iPhoneのときだけ、用紙の余白を7mmにして、
 // ラベル用紙は外の余白（7mm）を取らずに 196×283mm（ラベルの枠と同じ大きさ）で並べる。ラベル1枚の大きさは変わらない
-if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+// それでも iPhone では 2割ほど小さく刷れた（横 98→約80mm、縦 56.6→約47.6mm）。iPhoneは印刷のときに決まった割合で縮めるようなので、
+// 「iPhoneの印刷倍率」（この端末に覚える。はじめは120%）だけ、印刷するものを大きくして打ち消す。刷って測って、合わなければ数字を変える
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const iosZoom = () => { const v = +(localStorage.getItem("kuwagata:iosPrintZoom") || 120); return v >= 50 && v <= 200 ? v : 120; };
+function setIosZoom(v) {
+  try { localStorage.setItem("kuwagata:iosPrintZoom", String(v)); } catch {}
+  document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100));
+}
+const iosZoomField = () => IS_IOS ? `<label>iPhoneの印刷倍率<span class="unit" data-unit="%"><input type="number" id="iosZoom" min="50" max="200" step="1" inputmode="numeric" value="${iosZoom()}"></span><span class="hint">刷ったラベルが小さいときは大きく、大きいときは小さく（横98mmになるように）</span></label>` : "";
+if (IS_IOS) {
   const st = document.createElement("style");
-  st.textContent = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } }";
+  st.textContent = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
   document.head.appendChild(st);
+  try { document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100)); } catch {}
 }
 function doPrint() {
   void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
@@ -2980,6 +2990,7 @@ function pairLabelsForm() {
       <div class="fields">
         <label>開始位置<select id="plStart">${Array.from({ length: PAIR_LABELS_PER_PAGE }, (_, i) => `<option value="${i + 1}">${i + 1}枚目（${Math.floor(i / 2) + 1}段目の${i % 2 ? "右" : "左"}）</option>`).join("")}</select></label>
         <label>手書き用の空のラベル<span class="unit" data-unit="枚"><input type="number" id="plBlank" min="0" max="160" step="1" inputmode="numeric" value="0"></span></label>
+        ${iosZoomField()}
         <label class="check" style="align-self:end"><input type="checkbox" id="plQr"${state.plQr !== false ? " checked" : ""}> QRコード（読むとペアの画面が開く）</label>
         <p class="hint wide" style="margin:0">まだ台帳に入れていないペアの分は、空のラベル（管理番号と表の枠だけ）を何枚でも足して印刷できます。ペアを選ばずに、空のラベルだけ印刷することもできます。</p>
       </div>
@@ -3611,6 +3622,7 @@ function labelsForm() {
         <label>開始位置<select id="lbStart">${Array.from({ length: LABELS_PER_PAGE }, (_, i) => `<option value="${i + 1}">${i + 1}枚目（${Math.floor(i / 2) + 1}段目の${i % 2 ? "右" : "左"}）</option>`).join("")}</select></label>
         <p class="hint" style="align-self:end;margin:0 0 8px">使いかけのラベル用紙は、空いている位置から始められます。</p>
         <label>手書き用の空のラベル<span class="unit" data-unit="枚"><input type="number" id="lbBlank" min="0" max="200" step="1" inputmode="numeric" value="0"></span></label>
+        ${iosZoomField()}
         <p class="hint" style="align-self:end;margin:0 0 8px">まだ台帳に入れていない個体の分は、空のラベル（表の枠だけ）を何枚でも足せます。個体を選ばずに、空のラベルだけ印刷することもできます。</p>
       </div>
       <div class="row" style="justify-content:space-between">
@@ -4716,6 +4728,7 @@ document.addEventListener("change", e => {
     }, key === "date" ? "日付を保存しました" : "印を保存しました");
   }
   if (id === "spKind") { state.spKind = e.target.value; return renderPanel(); }
+  if (id === "iosZoom") { const v = Math.round(+e.target.value); if (v >= 50 && v <= 200) setIosZoom(v); return; }
   if (id === "plQr") { state.plQr = e.target.checked; return updatePairLabels(); }
   if (e.target.classList.contains("pl-pick") || id === "plStart" || id === "plBlank") return updatePairLabels();
   if (e.target.dataset.set !== undefined) {
