@@ -53,10 +53,7 @@
 }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
-/* スマホ（指で操作する端末）：入力欄の文字を16pxにする。iPhoneは16pxより小さい入力欄を押すと画面を拡大して、画面が動いてしまうため（2026-11-23） */
-@media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
-.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -739,7 +736,7 @@ function childLine(a, b) {
 window.addEventListener("beforeprint", () => { window.__printing = true; });
 window.addEventListener("afterprint", () => { window.__printing = false; });
 function doPrint() {
-  if (navigator.standalone === true) return standalonePrintHelp();
+  // ホーム画面のアプリでも、前と同じようにそのまま印刷する（2026-11-23 あっきーさんの希望。Safariへ案内する形 standalonePrintHelp はやめた）
   void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
   window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
   const go = () => { try { window.print(); } catch { toast("印刷できませんでした。PCかSafariで開いて印刷してください", 6000); } };
