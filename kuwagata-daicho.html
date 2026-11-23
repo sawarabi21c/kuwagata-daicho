@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>クワガタ飼育台帳</title>
 <!-- ホーム画面のアイコンは、全画面のアプリではなくSafariで開く（全画面のアプリだとiPhoneは印刷できないため。2026-11-23 あっきーさんが決めた）。
      そのため apple-mobile-web-app-capable は入れない -->
@@ -54,7 +54,7 @@
 }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
 .num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -357,6 +357,7 @@ label.unit.days::after { bottom: 9px; }
 .lbl-sex { font-weight: 700; font-size: 12pt; }
 .lbl-sex.m { color: #2f6db5; } .lbl-sex.f { color: #c0426b; }
 .lbl-stage { margin-left: auto; font-size: 8.2pt; color: #5d6860; white-space: nowrap; }
+.lbl-line { color: #1a1e1b; font-family: var(--f-data); font-weight: 700; font-size: 10pt; }
 .lbl-sp { font-weight: 700; font-size: 8.6pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lbl-par { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; font-family: var(--f-data); font-size: 7.4pt; }
 .lbl-par span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -733,6 +734,14 @@ function childLine(a, b) {
 // 印刷のあいだは、プレビューの作り直し（watchPreview）を止める（作り直しが続くと、iPhoneで印刷の画面が出なかった）
 window.addEventListener("beforeprint", () => { window.__printing = true; });
 window.addEventListener("afterprint", () => { window.__printing = false; });
+// iPhone・iPadのSafariは「@page labels」（余白0の用紙）を使えず、ふつうの余白10mmの中に210mm幅のラベル用紙を入れようとして、
+// 全体を縮めて印刷していた（2026-11-24 あっきーさん「サイズが小さい」）。iPhoneのときだけ、用紙の余白を7mmにして、
+// ラベル用紙は外の余白（7mm）を取らずに 196×283mm（ラベルの枠と同じ大きさ）で並べる。ラベル1枚の大きさは変わらない
+if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+  const st = document.createElement("style");
+  st.textContent = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } }";
+  document.head.appendChild(st);
+}
 function doPrint() {
   void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
   window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
@@ -3549,13 +3558,13 @@ function labelCell(b, o = labelOpts()) {
   // QRコード（右上）：iPhoneのカメラで読むと、この個体の画面が開く。空のラベルには付けない
   const qr = o.mgmt.qr && b.id ? `<div class="lbl-qr">${qrFor("b=" + b.id)}</div>` : "";
   return `<div class="lbl${qr ? " has-qr" : ""}">${qr}
-    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}<span class="lbl-stage">${esc((b.stage || "") + adultNote + nextNote)}</span></div>
-    <div class="lbl-sp">${esc([b.species, b.locality, b.line].filter(Boolean).join(" ・ "))}</div>
+    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}<span class="lbl-stage">${b.line ? `<b class="lbl-line">${esc(b.line)}</b>` : ""}${esc((adultNote + nextNote).replace(/^ ・ /, b.line ? " ・ " : ""))}</span></div>
+    <div class="lbl-sp">${esc([b.species, b.locality].filter(Boolean).join(" ・ "))}</div>
     <div class="lbl-par"><span>♂ ${esc(parent(b.fatherName, b.fatherSize))}</span><span>♀ ${esc(parent(b.motherName, b.motherSize))}</span></div>
     <table class="lbl-ex">
       <colgroup><col class="c-k"><col class="c-d"><col class="c-g"><col><col class="c-b"></colgroup>
       <tr class="hd"><th></th><th>日付</th><th>g数</th><th>えさ・添加剤</th><th>ボトル</th></tr>
-      <tr><th>孵化</th><td>${esc(shortDate(b.hatchDate))}</td><td colspan="3" class="l"><span class="k">割り出し</span> ${esc(shortDate(b.harvestDate))}</td></tr>
+      <tr><th>割出</th><td>${esc(shortDate(b.harvestDate))}</td><td colspan="3" class="l"><span class="k">孵化</span> ${esc(shortDate(b.hatchDate))}</td></tr>
       ${ex.map((l, i) => `<tr><th>${from + i + 1}回目</th><td>${l ? esc(shortDate(l.date)) : ""}</td><td>${l ? g(l.weight) : ""}</td><td class="l">${l ? esc(feedOn(l)) : ""}</td><td>${l ? esc(fmtCont(l.container) || l.bottle || "") : ""}</td></tr>`).join("")}
       <tr><th>蛹化</th><td>${esc(shortDate(b.pupationDate))}</td><td>${g(b.pupaWeight)}</td><td colspan="2"></td></tr>
       <tr><th>羽化</th><td>${esc(shortDate(b.eclosionDate))}</td><td colspan="3" class="l"><span class="k">大きさ</span> ${b.sizeMm ? esc(b.sizeMm + "mm") : ""}${isAdult(b) ? head : ""}</td></tr>
@@ -5201,15 +5210,23 @@ render();
   render();
   if (meta.get("termsAgreed") !== TERMS_VER) showTerms(true);
   renderSyncInfo();
-  state.routeWait = !runRoute(!(syncOn() && canSync() && syncAuto()));
-  // 同期が動かなかったときのために、少し待ってからもう一度ためす
-  if (state.routeWait) setTimeout(() => { if (state.routeWait && !state.sync.busy) { state.routeWait = false; runRoute(true); } }, 8000);
   // 同期：自動の端末は開いたときに読み込む。つなぎ直しが要るときは、前に許可していれば画面を出さずにつなぎ直す（1回だけ）
-  if (syncOn() && canSync() && syncAuto()) {
-    let tried = false; try { tried = sessionStorage.getItem("kuwagata:silentTried") === "1"; } catch {}
-    if (syncReady()) syncNow();
-    else if (meta.get("syncConsented") === "1" && !tried && navigator.onLine) syncConnect(true);
+  const autoSync = syncOn() && canSync() && syncAuto();
+  let tried = false; try { tried = sessionStorage.getItem("kuwagata:silentTried") === "1"; } catch {}
+  const silent = autoSync && !syncReady() && meta.get("syncConsented") === "1" && !tried && navigator.onLine;
+  // QRから開いたとき：Googleへつなぎ直しに行くなら、画面はまだ開かない（戻ってきてから開く）。
+  // 先に開くと、Googleへ移ったときに消えて、QRを2回読まないと開かなかった（2026-11-23 直した）
+  if (!silent) {
+    state.routeWait = !runRoute(!(autoSync && syncReady()));
+    // 同期が動かなかったときのために、少し待ってからもう一度ためす
+    if (state.routeWait) setTimeout(() => { if (state.routeWait && !state.sync.busy) { state.routeWait = false; runRoute(true); } }, 8000);
   }
+  if (autoSync) {
+    if (syncReady()) syncNow();
+    else if (silent) syncConnect(true);
+  }
+  // すでに開いているページで、別のQRを読んだとき（アドレスの # だけが変わる）
+  window.addEventListener("hashchange", () => { takeRoute(); if (state.loaded) runRoute(true); });
 })();
 </script>
 </body>
