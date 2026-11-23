@@ -746,13 +746,31 @@ function doPrint() {
   if (document.fonts && document.fonts.status === "loading") Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
   else go();
 }
+// Safariで同じ印刷の画面を開くための「#print=…」（選んだ個体・開始位置・ラベルの種類・価格など）。runRoute が受け取って開く（2026-11-23）
+function printRoute() {
+  const m = state.mode, q = new URLSearchParams();
+  const checked = sel => [...document.querySelectorAll(sel + ":checked")].map(c => c.dataset.id).join(",");
+  q.set("print", m);
+  if (m === "labels") { q.set("ids", checked(".lb-pick")); q.set("start", $("lbStart")?.value || "1"); q.set("blank", $("lbBlank")?.value || "0"); q.set("lo", JSON.stringify(labelOpts())); }
+  else if (m === "pairLabels") { q.set("ids", checked(".pl-pick")); q.set("start", $("plStart")?.value || "1"); q.set("blank", $("plBlank")?.value || "0"); q.set("qr", state.plQr === false ? "0" : "1"); }
+  else if (m === "sheet") q.set("ids", state.sheetIds.join(","));
+  else if (m === "care") q.set("ids", state.careIds.join(","));
+  else if (m === "year") q.set("y", String(state.moneyYear));
+  else if (m === "sp") {
+    q.set("kind", state.spKind); q.set("ids", state.spIds.join(",")); q.set("g", JSON.stringify(state.spGroups || [])); q.set("pr", JSON.stringify(state.spPrices || {}));
+    q.set("qr", state.spQr === false ? "0" : "1");
+    if ($("spStart")) q.set("start", $("spStart").value);
+    if ($("spFrom")) { q.set("from", $("spFrom").value); q.set("to", $("spTo").value); }
+  } else return "";
+  return q.toString();
+}
 // ホーム画面のアプリで印刷ボタンを押したとき：Safariで開くように案内する（ホーム画面のアプリの外へ出るリンクは、Safariで開く）
 function standalonePrintHelp() {
   $("termsBox").innerHTML = `<h2 id="termsTitle">Safariで開いて印刷してください</h2>
     <p>iPhoneのホーム画面に追加したアプリからは、iPhoneのしくみで印刷ができません。</p>
-    <p>下のボタンでSafariが開きます。Safariで同じ画面を開いて、「印刷する」を押してください。</p>
+    <p>下のボタンでSafariが開き、同じ印刷の画面（選んだものもそのまま）が出ます。「印刷する」を押してください。</p>
     <p class="hint">Safariの台帳は、ホーム画面のアプリとは別に記録をしまっています。Safariでも「バックアップ・同期」から一度Googleにつないでおくと、同じ記録が出ます。</p>
-    <div class="row end"><button class="btn" type="button" data-terms-close>閉じる</button><a class="btn primary" href="${esc(APP_URL)}" target="_blank" rel="noopener">Safariで開く</a></div>`;
+    <div class="row end"><button class="btn" type="button" data-terms-close>閉じる</button><a class="btn primary" href="${esc(APP_URL + (printRoute() ? "#" + printRoute() : ""))}" target="_blank" rel="noopener">Safariで開く</a></div>`;
   $("terms").hidden = false; $("termsBox").scrollTop = 0;
 }
 function toast(msg, ms = 2400) {
@@ -967,7 +985,7 @@ const qrFor = route => QR.svg(`${APP_URL}#${route}`);
 /* ---------- QRコードから開いたとき（#b=個体 ／ #p=ペア ／ #sell=個体,個体&price=金額） ---------- */
 // アドレスの # の後ろを覚えておき（Googleにつなぎ直すために一度ページを移っても残るように）、記録を読み終えてから画面を開く
 function takeRoute() {
-  if (!/^#(b|p|sell)=/.test(location.hash)) return;
+  if (!/^#(b|p|sell|print)=/.test(location.hash)) return;
   try { sessionStorage.setItem("kuwagata:route", location.hash.slice(1)); } catch {}
   history.replaceState(null, "", location.pathname + location.search);
 }
@@ -985,6 +1003,36 @@ function runRoute(final = false) {
     const p = state.pairs.find(x => x.id === q.get("p"));
     if (!p) { if (final) { toast("このペアは、この端末の台帳にありません（同期を確かめてください）"); return done(); } return false; }
     state.view = "pairs"; render(); openPanel(p.id, "pair"); return done();
+  }
+  // ホーム画面のアプリから「Safariで開く」で来たとき：同じ印刷の画面を、同じ選び方で開く
+  if (q.get("print")) {
+    const m = q.get("print"), ids = (q.get("ids") || "").split(",").filter(Boolean);
+    const pool = m === "pairLabels" ? state.pairs : state.beetles;
+    const found = ids.filter(id => pool.some(x => x.id === id));
+    if (found.length < ids.length && !final) return false;
+    if (found.length < ids.length) toast("この端末（Safari）の台帳に無い記録は外しました。Safariでも同期しているか確かめてください", 6000);
+    const js = (k, d) => { try { return JSON.parse(q.get(k) || ""); } catch { return d; } };
+    const setVal = (id, v) => { if ($(id) && v !== null && v !== undefined) $(id).value = v; };
+    if (m === "labels") {
+      if (q.get("lo")) meta.set("labelOpts", q.get("lo"));
+      openPanel(null, "labels"); state.labelIds = found; renderPanel();
+      setVal("lbStart", q.get("start")); setVal("lbBlank", q.get("blank")); updateLabels();
+    } else if (m === "pairLabels") {
+      state.plQr = q.get("qr") !== "0";
+      openPanel(null, "pairLabels"); state.pairLabelIds = found; renderPanel();
+      setVal("plStart", q.get("start")); setVal("plBlank", q.get("blank")); updatePairLabels();
+    } else if (m === "sheet" || m === "care") {
+      openPanel(null, m); state[m === "sheet" ? "sheetIds" : "careIds"] = found; renderPanel();
+    } else if (m === "year") {
+      state.moneyYear = +q.get("y") || state.moneyYear; state.view = "money"; render(); openPanel(null, "year");
+    } else if (m === "sp") {
+      state.spQr = q.get("qr") !== "0";
+      openPanel(null, "sp"); state.spKind = q.get("kind") || "stock"; state.spIds = found; state.spGroups = js("g", []); state.spPrices = js("pr", {}); renderPanel();
+      setVal("spStart", q.get("start")); setVal("spFrom", q.get("from")); setVal("spTo", q.get("to")); updateSp();
+    }
+    $("panel").scrollTop = 0;
+    if (found.length === ids.length) toast("同じ印刷の画面を開きました。「印刷する」を押してください", 5000);
+    return done();
   }
   if (q.get("sell")) {
     const ids = q.get("sell").split(",").filter(Boolean), found = ids.map(id => state.beetles.find(x => x.id === id)).filter(Boolean);
