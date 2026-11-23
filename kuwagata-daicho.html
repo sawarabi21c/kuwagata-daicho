@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>クワガタ飼育台帳</title>
-<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- ホーム画面のアイコンは、全画面のアプリではなくSafariで開く（全画面のアプリだとiPhoneは印刷できないため。2026-11-23 あっきーさんが決めた）。
+     そのため apple-mobile-web-app-capable は入れない -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="飼育台帳">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -461,13 +462,16 @@ label.unit.days::after { bottom: 9px; }
 .dd-item small { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .dd-item:hover, .dd-item.on { background: var(--line); }
 .dd-none { padding: 9px 10px; font-size: 13px; color: var(--muted); }
-.print-only { display: none; }
+/* 印刷するもの（#printArea）は、画面の外に置いて見えなくする（display:none にしない）。
+   iPhoneのSafariは、印刷を始めたときに文字（ウェブフォント）の読み込みが残っていると、印刷の画面を出さないまま止まるため、
+   先に画面の外で文字を読み込ませておく（2026-11-23） */
+.print-only { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; }
 @page labels { size: A4; margin: 0; }
 @media print {
   @page { size: A4; margin: 10mm; }
   body { background: #fff; }
   body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; }
+  #printArea { display: block !important; position: static !important; left: auto !important; visibility: visible !important; }
   #printArea .sheets { gap: 5mm; }
   html { padding: 0; }
   .lbl-page { page: labels; break-after: page; }
@@ -725,6 +729,17 @@ function childLine(a, b) {
   return p + (Math.max(...list.map(v => v.n)) + 1);
 }
 
+// 印刷（2026-11-23）：iPhoneのSafariは、文字（ウェブフォント）の読み込み中に印刷を頼むと止まるので、読み込みを待ってから頼む。
+// 印刷のあいだは、プレビューの作り直し（watchPreview）を止める（作り直しが続くと、iPhoneで印刷の画面が出なかった）
+window.addEventListener("beforeprint", () => { window.__printing = true; });
+window.addEventListener("afterprint", () => { window.__printing = false; });
+function doPrint() {
+  void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
+  window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
+  const go = () => window.print();
+  if (document.fonts && document.fonts.status === "loading") Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
+  else go();
+}
 function toast(msg, ms = 2400) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms);
@@ -3214,7 +3229,7 @@ function carePanel() {
 function printCare() {
   const list = state.careIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(careHtml).join("")}</div>`;
-  window.print();
+  doPrint();
 }
 /* ---------- 何世代でも遡れる血統表（改善⑱：画面で見るだけ。印刷はしない） ---------- */
 // はじめは3代。チェックで4代目・5代目…と増やす（この端末に覚える）。台帳にいる先祖は名前でどこまでもたどり、
@@ -3466,7 +3481,7 @@ function updateSp() {
 function printSp() {
   if (state.spKind !== "sold" && !spItems().length) return toast("印刷する個体を選んでください");
   $("printArea").innerHTML = spHtml();
-  window.print();
+  doPrint();
 }
 function sheetPanel() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
@@ -3613,7 +3628,15 @@ function lbOptsHtml(o) {
 // 枠の幅が変わったら（開いた直後など）プレビューを作り直す
 function watchPreview(wrap, fn) {
   if (!wrap || wrap._ro || typeof ResizeObserver === "undefined") return;
-  wrap._ro = new ResizeObserver(() => { const w = wrap.clientWidth; if (w && w !== wrap._w) { wrap._w = w; fn(); } });
+  // iPhoneでは、ここが何度も続けて動いて（ResizeObserver のエラー）、印刷の画面が出なかった（2026-11-23）。
+  // 印刷している間は動かさない・2px未満の変化は無視する・作り直しは次の描画のときにする
+  wrap._ro = new ResizeObserver(() => {
+    if (window.__printing) return;
+    const w = wrap.clientWidth;
+    if (!w || Math.abs(w - (wrap._w || 0)) < 2) return;
+    wrap._w = w;
+    cancelAnimationFrame(wrap._raf); wrap._raf = requestAnimationFrame(() => { if (!window.__printing) fn(); });
+  });
   wrap._ro.observe(wrap);
 }
 function updateLabels() {
@@ -3639,13 +3662,13 @@ function printLabels() {
   const picked = labelItems();
   if (!picked.length) return toast("個体を選ぶか、空のラベルの枚数を入れてください");
   $("printArea").innerHTML = labelPagesHtml(picked, +$("lbStart").value || 1);
-  window.print();
+  doPrint();
 }
 
 function printSheets() {
   const list = state.sheetIds.map(id => state.beetles.find(b => b.id === id)).filter(Boolean);
   $("printArea").innerHTML = `<div class="sheets">${list.map(sheetHtml).join("")}</div>`;
-  window.print();
+  doPrint();
 }
 
 function backupPanel() {
@@ -4520,7 +4543,7 @@ document.addEventListener("click", e => {
     const picked = pairLabelItems();
     if (!picked.length) return toast("ペアを選ぶか、空のラベルの枚数を入れてください");
     $("printArea").innerHTML = pairLabelPagesHtml(picked, +$("plStart").value || 1);
-    return window.print();
+    return doPrint();
   }
   if (t.dataset.treesave) {
     const b = structuredClone(state.beetles.find(x => x.id === t.dataset.treesave));
@@ -4538,7 +4561,7 @@ document.addEventListener("click", e => {
     save(b).then(ok => ok && toast("血統の入力を保存しました"));
     return;
   }
-  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return window.print(); }
+  if (t.hasAttribute("data-printyear")) { $("printArea").innerHTML = yearHtml(state.moneyYear); return doPrint(); }
   if (t.hasAttribute("data-spgroup") || t.hasAttribute("data-spungroup")) {
     const ids = [...document.querySelectorAll(".sp-pick:checked")].map(c => c.dataset.id);
     if (t.hasAttribute("data-spgroup") && ids.length < 2) return toast("組にする個体を2頭以上選んでください");
