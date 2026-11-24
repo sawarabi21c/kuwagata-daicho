@@ -355,8 +355,15 @@ label.unit.days::after { bottom: 9px; }
 .lbl-head { display: flex; align-items: baseline; gap: 2mm; border-bottom: .35mm solid #1a1e1b; padding-bottom: .8mm; }
 .lbl-name { font-family: var(--f-data); font-weight: 600; font-size: 12pt; letter-spacing: .02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lbl-sex { font-weight: 700; font-size: 12pt; }
+/* 成虫は、性別の右に大きさ（2026-11-24 あっきーさんの希望） */
+.lbl-size { font-family: var(--f-data); font-weight: 700; font-size: 12pt; white-space: nowrap; }
+/* 見出しの行が長いときに、ラベルの幅を押し広げてQRの下にもぐらないようにする（はみ出す分は右の小さい文字から「…」で省く） */
+.lbl { grid-template-columns: minmax(0, 1fr); }
+.lbl-head { min-width: 0; }
+.lbl-head .lbl-stage { flex-shrink: 50; }
+.lbl-head .lbl-name { flex-shrink: 0; max-width: 62%; }
 .lbl-sex.m { color: #2f6db5; } .lbl-sex.f { color: #c0426b; }
-.lbl-stage { margin-left: auto; font-size: 8.2pt; color: #5d6860; white-space: nowrap; }
+.lbl-stage { margin-left: auto; font-size: 8.2pt; color: #5d6860; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lbl-line { color: #1a1e1b; font-family: var(--f-data); font-weight: 700; font-size: 10pt; }
 .lbl-sp { font-weight: 700; font-size: 8.6pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lbl-par { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; font-family: var(--f-data); font-size: 7.4pt; }
@@ -1347,18 +1354,20 @@ function soldList(m) {
    2026-11-20：個体が多いと重いので、最初はチェックした個体だけを出す。検索するか「全部出す」を押したら PICK_MAX 頭まで並べる。
    チェックした個体は、検索に合わなくてもいつも上に出す。 */
 const pickKey = b => [b.code, b.species, b.line, b.locality].join(" ").toLowerCase();
-function pickState(kind) { if (!state.pick || state.pick.kind !== kind) state.pick = { kind, q: "", all: false }; return state.pick; }
+function pickState(kind) { if (!state.pick || state.pick.kind !== kind) state.pick = { kind, q: "", all: false, stage: "" }; return state.pick; }
+// 状態（幼虫・卵／前蛹・蛹／成虫）でも絞り込める（2026-11-24 あっきーさんの希望）
+const PICK_STAGES = [["", "状態：すべて"], ["larva", "幼虫・卵"], ["pupa", "前蛹・蛹"], ["adult", "成虫"]];
 function pickRows(kind, cands, picked, rowFn) {
-  const p = pickState(kind), q = p.q.trim().toLowerCase(), set = new Set(picked);
+  const p = pickState(kind), q = p.q.trim().toLowerCase(), st = p.stage || "", set = new Set(picked);
   const sel = cands.filter(b => set.has(b.id));
-  const hit = p.all || q ? cands.filter(b => !set.has(b.id) && (!q || pickKey(b).includes(q))) : [];
+  const hit = p.all || q || st ? cands.filter(b => !set.has(b.id) && (!q || pickKey(b).includes(q)) && (!st || stageGroup(b.stage) === st)) : [];
   const rest = hit.slice(0, PICK_MAX);
-  const note = !p.all && !q ? `${cands.length}頭から選べます。名前・種別で検索するか、<button class="btn small" type="button" data-pickall="${kind}">全部出す</button> を押してください。`
+  const note = !p.all && !q && !st ? `${cands.length}頭から選べます。名前・種別で検索するか、状態を選ぶか、<button class="btn small" type="button" data-pickall="${kind}">全部出す</button> を押してください。`
     : hit.length > rest.length ? `合う個体が${hit.length}頭あるので、${PICK_MAX}頭まで出しています。検索でしぼってください。`
-    : q && !hit.length ? "検索に合う個体はありません。" : "";
+    : (q || st) && !hit.length ? "検索に合う個体はありません。" : "";
   return { rows: sel.map(b => rowFn(b, true)).join("") + rest.map(b => rowFn(b, false)).join(""), note };
 }
-const pickSearchHtml = (kind, style) => `<input type="search" id="${kind}Search" placeholder="名前・種別で絞り込み" value="${esc(pickState(kind).q)}" style="${style}">`;
+const pickSearchHtml = (kind, style) => `<select id="${kind}Stage" aria-label="状態で絞り込み" style="flex:0 1 auto;width:auto">${PICK_STAGES.map(([v, t]) => `<option value="${v}"${(pickState(kind).stage || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select><input type="search" id="${kind}Search" placeholder="名前・種別で絞り込み" value="${esc(pickState(kind).q)}" style="${style}">`;
 // 検索・「全部出す」のあと：表の中身だけを作り直す（ほかの入力欄はそのまま）
 function pickRefresh(kind) {
   const body = $(kind + "Rows");
@@ -2438,7 +2447,7 @@ const INPUT_MODES = ["edit", "new", "pairEdit", "pairNew", "kids", "bulk", "sale
 // ここに入力すると「まだ保存していない」とみなすフォーム
 const DIRTY_FORMS = ["editForm", "pairForm", "kidsForm", "bulkForm", "saleForm", "moneyForm", "stockForm", "logForm", "archiveForm", "mixForm", "listingForm"];
 // 出品文の画面は、文章を手で直したときだけ「保存していない」とみなす（チェックや絞り込みでは聞かない）
-const markDirty = el => { if (el.closest("#listingForm") && !["lsTitle", "lsBody", "lsX"].includes(el.id)) return; if (!["slSearch", "lbSearch"].includes(el.id) && DIRTY_FORMS.includes(el.closest("form")?.id)) state.dirty = true; };
+const markDirty = el => { if (el.closest("#listingForm") && !["lsTitle", "lsBody", "lsX"].includes(el.id)) return; if (!["slSearch", "lbSearch", "slStage", "lbStage"].includes(el.id) && DIRTY_FORMS.includes(el.closest("form")?.id)) state.dirty = true; };
 // 入力した内容があれば、確かめてから閉じる・戻る
 function leavePanel(fn) {
   if (state.dirty && !confirm("入力した内容は、まだ保存されていません。保存せずに閉じますか？")) return;
@@ -3569,7 +3578,7 @@ function labelCell(b, o = labelOpts()) {
   // QRコード（右上）：iPhoneのカメラで読むと、この個体の画面が開く。空のラベルには付けない
   const qr = o.mgmt.qr && b.id ? `<div class="lbl-qr">${qrFor("b=" + b.id)}</div>` : "";
   return `<div class="lbl${qr ? " has-qr" : ""}">${qr}
-    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}<span class="lbl-stage">${b.line ? `<b class="lbl-line">${esc(b.line)}</b>` : ""}${esc((adultNote + nextNote).replace(/^ ・ /, b.line ? " ・ " : ""))}</span></div>
+    <div class="lbl-head"><span class="lbl-name">${esc(nameOf(b))}</span>${b.sex === "♂" ? '<span class="lbl-sex m">♂</span>' : b.sex === "♀" ? '<span class="lbl-sex f">♀</span>' : ""}${isAdult(b) && b.sizeMm ? `<span class="lbl-size">${esc(b.sizeMm + "mm")}</span>` : ""}<span class="lbl-stage">${b.line ? `<b class="lbl-line">${esc(b.line)}</b>` : ""}${esc((adultNote + nextNote).replace(/^ ・ /, b.line ? " ・ " : ""))}</span></div>
     <div class="lbl-sp">${esc([b.species, b.locality].filter(Boolean).join(" ・ "))}</div>
     <div class="lbl-par"><span>♂ ${esc(parent(b.fatherName, b.fatherSize))}</span><span>♀ ${esc(parent(b.motherName, b.motherSize))}</span></div>
     <table class="lbl-ex">
@@ -4683,6 +4692,8 @@ document.addEventListener("input", e => {
   // 個体を選ぶ表の検索：合う個体を PICK_MAX 頭まで出し直す（チェックした個体はいつも出す）
   const pickKind = ["sl", "ls", "lb", "sp"].find(k => e.target.id === k + "Search");
   if (pickKind) { pickState(pickKind).q = e.target.value; pickRefresh(pickKind); if (pickKind === "lb") updateLabels(); }
+  const stageKind = ["sl", "ls", "lb", "sp"].find(k => e.target.id === k + "Stage");
+  if (stageKind) { pickState(stageKind).stage = e.target.value; pickRefresh(stageKind); if (stageKind === "lb") updateLabels(); }
   if (e.target.id === "lsTitle") updateTitleLen();
   if (e.target.id === "lsX") updateXLen();
   if (e.target.id === "plBlank") updatePairLabels();
