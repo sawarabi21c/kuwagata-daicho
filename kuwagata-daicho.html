@@ -753,14 +753,26 @@ function setIosZoom(v) {
   document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100));
 }
 const iosZoomField = () => IS_IOS ? `<label>iPhoneの印刷倍率<span class="unit" data-unit="%"><input type="number" id="iosZoom" min="50" max="200" step="1" inputmode="numeric" value="${iosZoom()}"></span><span class="hint">刷ったラベルが小さいときは大きく、大きいときは小さく（横98mmになるように）</span></label>` : "";
+// 2026-11-25：iPhoneのSafariは、用紙の余白にヘッダー（ページの名前・アドレス）とフッター（ページ番号）を書く。
+// ラベル（個体・ペア・販売札）を刷るときだけ、用紙の余白を0にして書く場所を無くし、ラベル用紙の内側に7mmの余白を戻す。
+// 累代票・一覧などは何ページにもなるので、今までどおり7mmの余白（ヘッダー・フッターは出る）
+const IOS_PRINT_LABELS = "@media print { @page { size: A4; margin: 0; } .lbl-page { width: 210mm !important; height: 297mm !important; padding: 7mm !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
+const IOS_PRINT_OTHER = "@media print { @page { size: A4; margin: 7mm; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
+function iosPrintStyle() {
+  const st = $("iosPrintStyle"); if (!st) return;
+  st.textContent = $("printArea") && $("printArea").querySelector(".lbl-page") ? IOS_PRINT_LABELS : IOS_PRINT_OTHER;
+}
 if (IS_IOS) {
   const st = document.createElement("style");
-  st.textContent = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
+  st.id = "iosPrintStyle";
+  st.textContent = IOS_PRINT_LABELS;
   document.head.appendChild(st);
   try { document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100)); } catch {}
+  window.addEventListener("beforeprint", iosPrintStyle);
 }
 function doPrint() {
   void $("printArea").offsetHeight; // 画面の外で並べさせて、要る文字の読み込みを始めさせる
+  if (IS_IOS) iosPrintStyle();
   window.__printing = true; clearTimeout(doPrint._t); doPrint._t = setTimeout(() => { window.__printing = false; }, 60000);
   const go = () => window.print();
   if (document.fonts && document.fonts.status === "loading") Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))]).then(() => setTimeout(go, 100));
