@@ -369,7 +369,7 @@ label.unit.days::after { bottom: 9px; }
 .lbl-par { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; font-family: var(--f-data); font-size: 7.4pt; }
 .lbl-par span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lbl-ex { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.4pt; }
-.lbl-ex col.c-k { width: 9.5mm; } .lbl-ex col.c-d { width: 16.5mm; } .lbl-ex col.c-g { width: 10mm; } .lbl-ex col.c-b { width: 15mm; }
+.lbl-ex col.c-k { width: 12mm; } .lbl-ex col.c-d { width: 16.5mm; } .lbl-ex col.c-g { width: 10mm; } .lbl-ex col.c-b { width: 15mm; } /* 日付の列を少し右へ（左の項目列を 9.5→12mm。2026-11-24 あっきーさんの希望） */
 .lbl-ex th, .lbl-ex td { border: .2mm solid #8a948c; padding: 0 .8mm; height: 3.95mm; text-align: center; font-weight: 400; font-family: var(--f-data); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lbl-ex td.l { text-align: left; font-family: var(--f-body); }
 .lbl-ex th { color: #3d4640; font-family: var(--f-body); font-size: 6.6pt; text-align: left; }
@@ -741,7 +741,7 @@ function childLine(a, b) {
 // フォント待ちで遅らせて呼ぶと、ホーム画面から起動したiPhoneでは無視されて「反応しない」になる（2026-11-24）。
 // 印刷のあいだは、プレビューの作り直し（watchPreview）を止める（作り直しが続くと、iPhoneで印刷の画面が出なかった）
 window.addEventListener("beforeprint", () => { window.__printing = true; });
-window.addEventListener("afterprint", () => { window.__printing = false; setIosLabelMode(false); });
+window.addEventListener("afterprint", () => { window.__printing = false; });
 // iPhone・iPadのSafariは「@page labels」（余白0の用紙）を使えず、ふつうの余白10mmの中に210mm幅のラベル用紙を入れようとして、
 // 全体を縮めて印刷していた（2026-11-24 あっきーさん「サイズが小さい」）。iPhoneのときだけ、用紙の余白を7mmにして、
 // ラベル用紙は外の余白（7mm）を取らずに 196×283mm（ラベルの枠と同じ大きさ）で並べる。ラベル1枚の大きさは変わらない
@@ -754,18 +754,10 @@ function setIosZoom(v) {
   document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100));
 }
 const iosZoomField = () => IS_IOS ? `<label>iPhoneの印刷倍率<span class="unit" data-unit="%"><input type="number" id="iosZoom" min="50" max="200" step="1" inputmode="numeric" value="${iosZoom()}"></span><span class="hint">刷ったラベルが小さいときは大きく、大きいときは小さく（横98mmになるように）</span></label>` : "";
-// iPhoneの印刷スタイルは2種類。通常は余白7mm（上の説明の通り）。
-// ラベル印刷のときだけ余白0にする（setIosLabelMode）：Safariはヘッダー・フッター（日付・URL・ページ番号）を
-// 用紙の余白の帯に刷るので、余白を0にすると刷る場所がなくなり消える。代わりにラベルのページ側が7mmの内側余白を持ち、
-// ラベルの並びはPC版の「@page labels（余白0）」と同じになる（2026-11-24 あっきーさん「ヘッダーとフッターを消したい」）
-const IOS_PRINT_CSS = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
-const IOS_LABEL_CSS = "@media print { @page { size: A4; margin: 0; } .lbl-page { width: 210mm !important; height: 297mm !important; padding: 7mm !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
-let iosSt = null;
-function setIosLabelMode(on) { if (iosSt) iosSt.textContent = on ? IOS_LABEL_CSS : IOS_PRINT_CSS; }
 if (IS_IOS) {
-  iosSt = document.createElement("style");
-  iosSt.textContent = IOS_PRINT_CSS;
-  document.head.appendChild(iosSt);
+  const st = document.createElement("style");
+  st.textContent = "@media print { @page { size: A4; margin: 7mm; } .lbl-page { width: 196mm !important; height: 283mm !important; padding: 0 !important; } #printArea { zoom: var(--ios-print-zoom, 1.2); } }";
+  document.head.appendChild(st);
   try { document.documentElement.style.setProperty("--ios-print-zoom", String(iosZoom() / 100)); } catch {}
 }
 // フォントの先読み：起動直後に全フォントを読み始め、印刷のときに「読み込み中」にならないようにする
@@ -3523,7 +3515,6 @@ function updateSp() {
 function printSp() {
   if (state.spKind !== "sold" && !spItems().length) return toast("印刷する個体を選んでください");
   $("printArea").innerHTML = spHtml();
-  if (state.spKind === "tags") setIosLabelMode(true);
   doPrint();
 }
 function sheetPanel() {
@@ -3706,7 +3697,6 @@ function printLabels() {
   const picked = labelItems();
   if (!picked.length) return toast("個体を選ぶか、空のラベルの枚数を入れてください");
   $("printArea").innerHTML = labelPagesHtml(picked, +$("lbStart").value || 1);
-  setIosLabelMode(true);
   doPrint();
 }
 
@@ -4588,7 +4578,6 @@ document.addEventListener("click", e => {
     const picked = pairLabelItems();
     if (!picked.length) return toast("ペアを選ぶか、空のラベルの枚数を入れてください");
     $("printArea").innerHTML = pairLabelPagesHtml(picked, +$("plStart").value || 1);
-    setIosLabelMode(true);
     return doPrint();
   }
   if (t.dataset.treesave) {
