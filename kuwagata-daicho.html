@@ -3572,7 +3572,7 @@ function labelCell(b, o = labelOpts()) {
   const parent = (n, s) => [n, s ? s + "mm" : ""].filter(Boolean).join(" ") || "—";
   const g = v => typeof v === "number" ? v.toFixed(1) : "";
   // 成虫でも成長の記録はいつも出す（2026-11-15 あっきーさんの希望）。成虫の情報は、空いている所に少しだけ足す
-  const adultNote = isAdult(b) && b.feedStartDate ? ` ・ 後食 ${shortDate(b.feedStartDate)}` : "";
+  const adultNote = ""; // 後食開始日はラベルに入れない（2026-11-24 あっきーさんの希望。成虫は大きさを見出しに出す）
   const head = b.headWidth ? ` <span class="k">頭幅</span> ${esc(b.headWidth + "mm")}` : "";
   // 孵化・割り出し → 交換1〜4回目 → 蛹化 → 羽化 の順。空欄は手書き用（「表示する項目」の設定はラベルには効かせない）
   // QRコード（右上）：iPhoneのカメラで読むと、この個体の画面が開く。空のラベルには付けない
