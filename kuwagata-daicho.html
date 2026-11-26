@@ -1031,11 +1031,16 @@ function runRoute(final = false) {
 // テストのときは window.__syncFileName で別の名前のファイルを使う（本物の記録のファイルにテストのデータを混ぜないため）
 const SYNC_FILE_NAME = "kuwagata-daicho-sync.json";
 const syncFile = () => window.__syncFileName || SYNC_FILE_NAME;
+// 写真を置くドライブのフォルダ（テストのときは window.__photoFolderName）
+const PHOTO_FOLDER_NAME = "kuwagata-daicho-photos";
+const photoFolderName = () => window.__photoFolderName || PHOTO_FOLDER_NAME;
 // あっきーさんの Google のクライアントID（2026-11-18 作成。秘密の値ではない）。設定の画面で別のものに変えることもできる
 const DEFAULT_CLIENT_ID = "291168064764-6232pbuj4hcagsumg15r584eg327lt9m.apps.googleusercontent.com";
 const SYNC_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const SYNC_STORES = ["beetles", "pairs", "money", "stock"];
-const PHOTO_FIELDS = ["image", "photos", "imageInfo"];
+// 写真そのものは記録のファイルに入れない（2026-11-26 からは、写真は1枚ずつ別のファイルで送る。下の「写真の同期」）。
+// photoWait は、ほかの端末の写真で、まだこの端末に届いていないもの（[{ id, h, date, kind, main }]）
+const PHOTO_FIELDS = ["image", "photos", "imageInfo", "photoWait"];
 state.sync = { status: "", busy: false, pending: false, error: "" };
 state.tombs = [];
 const syncOn = () => !BETA && meta.get("syncOn") === "1"; // ベータ版は同期を使わない（2026-11-20 決定）
@@ -1093,6 +1098,40 @@ const realDrive = {
     return (await (await this.call("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + b }, body })).json()).id;
   },
   async update(id, text) { await this.call(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: text }); },
+  // 写真のフォルダ（無ければ作る）。フォルダの場所はこの端末に覚える
+  async photoFolder() {
+    const name = photoFolderName(), key = "photoFolderId:" + name, FOLDER = "application/vnd.google-apps.folder";
+    const known = meta.get(key);
+    if (known) {
+      try { const f = await (await this.call(`https://www.googleapis.com/drive/v3/files/${known}?fields=id,trashed`)).json(); if (f.id && !f.trashed) return known; } catch (e) { if (e.auth) throw e; }
+    }
+    const q = encodeURIComponent(`name='${name}' and mimeType='${FOLDER}' and trashed=false`);
+    let id = (await (await this.call(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id)&orderBy=createdTime`)).json()).files?.[0]?.id || "";
+    if (!id) id = (await (await this.call("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: FOLDER }) })).json()).id;
+    meta.set(key, id);
+    return id;
+  },
+  async photoList(folder) {
+    const out = []; let page = "";
+    do {
+      const q = encodeURIComponent(`'${folder}' in parents and trashed=false`);
+      const r = await (await this.call(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&pageSize=1000&fields=nextPageToken,files(id,name,createdTime)${page ? "&pageToken=" + encodeURIComponent(page) : ""}`)).json();
+      out.push(...(r.files || [])); page = r.nextPageToken || "";
+    } while (page);
+    return out;
+  },
+  async photoUpload(folder, name, dataUrl) {
+    const blob = await (await fetch(dataUrl)).blob();
+    const b = "kuwagata" + Date.now();
+    const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folder], mimeType: blob.type || "image/jpeg" })}\r\n--${b}\r\nContent-Type: ${blob.type || "image/jpeg"}\r\n\r\n`, blob, `\r\n--${b}--`]);
+    return (await (await this.call("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime", { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + b }, body })).json());
+  },
+  async photoRead(id) {
+    const blob = await (await this.call(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).blob();
+    return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+  },
+  // ごみ箱へ移す（ドライブで30日は戻せる）
+  async photoTrash(id) { await this.call(`https://www.googleapis.com/drive/v3/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }); },
 };
 const drive = () => window.__driveMock || realDrive;
 const syncReady = () => !!window.__driveMock || !!syncTokenGet();
@@ -1110,7 +1149,7 @@ function mergeTombs(a, b) {
 }
 // 送るもの：写真を抜いた記録すべて＋設定＋消した印
 function syncPayload() {
-  const strip = b => { const c = { ...b }; PHOTO_FIELDS.forEach(k => delete c[k]); return c; };
+  const strip = b => { const c = { ...b }; PHOTO_FIELDS.forEach(k => delete c[k]); delete c.photoRefs; const r = photoRefs(b); if (r) c.photoRefs = r; return c; };
   return { app: "kuwagata-daicho", format: 5, syncedAt: new Date().toISOString(), device: navigator.userAgent.slice(0, 80),
     beetles: state.beetles.map(strip), pairs: state.pairs, money: state.money, stock: state.stock, masters: state.masters, tombstones: state.tombs };
 }
@@ -1118,15 +1157,17 @@ function syncPayload() {
 async function syncMerge(remote) {
   let changed = 0;
   state.tombs = mergeTombs(state.tombs, Array.isArray(remote.tombstones) ? remote.tombstones : []);
+  const remoteWon = new Set(), refsById = new Map();
   for (const name of SYNC_STORES) {
     const local = state[name], byId = new Map(local.map(x => [x.id, x]));
     const write = [];
     (Array.isArray(remote[name]) ? remote[name] : []).forEach(r => {
       if (!r || typeof r.id !== "string") return;
+      if (name === "beetles" && r.photoRefs) refsById.set(r.id, r.photoRefs);
       const l = byId.get(r.id);
       if (l && (r.updatedAt || "") <= (l.updatedAt || "")) return;
       const merged = { ...r };
-      if (name === "beetles") { PHOTO_FIELDS.forEach(k => delete merged[k]); if (l) PHOTO_FIELDS.forEach(k => { if (l[k] !== undefined) merged[k] = l[k]; }); }
+      if (name === "beetles") { remoteWon.add(r.id); delete merged.photoRefs; PHOTO_FIELDS.forEach(k => delete merged[k]); if (l) PHOTO_FIELDS.forEach(k => { if (l[k] !== undefined) merged[k] = l[k]; }); }
       write.push(merged);
     });
     const tombs = state.tombs.filter(t => t.s === name);
@@ -1140,6 +1181,7 @@ async function syncMerge(remote) {
       state[name] = [...m.values()]; changed += keepWrite.length + del.length;
     }
   }
+  changed += await mergeAllPhotos(refsById, remoteWon);
   const rm = remote.masters;
   if (rm && typeof rm === "object" && (rm.updatedAt || "") > (state.masters.updatedAt || "")) {
     state.masters = { ...state.masters, ...rm };
@@ -1158,6 +1200,7 @@ async function syncNow(manual = false) {
   state.sync.busy = true; state.sync.error = ""; state.sync.pending = false; renderSyncInfo();
   try {
     const d = drive();
+    await ensurePhotoHashes();
     let id = meta.get("syncFileId") || "";
     if (!id) id = await d.find();
     let changed = 0;
@@ -1169,7 +1212,13 @@ async function syncNow(manual = false) {
     if (id) await d.update(id, text); else id = await d.create(text);
     meta.set("syncFileId", id); meta.set("syncLast", new Date().toISOString());
     if (changed) { render(); if (!$("overlay").hidden && !INPUT_MODES.includes(state.mode)) renderPanel(); }
-    if (manual) toast(changed ? `同期しました（ほかの端末の変更 ${changed}件を入れました）` : "同期しました");
+    // 写真は記録のあとで送り・受け取る（枚数が多いと時間がかかるため）。うまくいかなかった写真は、次の同期でもう一度
+    let ph = { got: 0, fail: 0 };
+    try { ph = await syncPhotos(); }
+    catch (e) { if (e.auth) throw e; ph.fail = -1; }
+    finally { state.sync.photo = ""; }
+    if (ph.got) { render(); if (!$("overlay").hidden && !INPUT_MODES.includes(state.mode)) renderPanel(); }
+    if (manual) toast((changed ? `同期しました（ほかの端末の変更 ${changed}件を入れました）` : "同期しました") + (ph.got ? `・写真${ph.got}枚を受け取りました` : "") + (ph.fail ? "・送れなかった写真があります（次の同期でもう一度送ります）" : ""), ph.fail ? 5000 : 2400);
   } catch (e) {
     state.sync.error = e.auth ? "Googleにつなぎ直してください" : "同期できませんでした。しばらくして、もう一度ためしてください";
     if (!e.auth) state.sync.pending = true;
@@ -1187,6 +1236,162 @@ function scheduleSync() {
   syncTimer = setTimeout(() => syncNow(), window.__driveMock ? 50 : 4000);
 }
 window.addEventListener("online", () => { if (state.sync.pending && syncAuto()) syncNow(); });
+
+/* ---------- 写真の同期（2026-11-26） ----------
+   写真は1枚ずつ、ドライブのフォルダ「kuwagata-daicho-photos」に「<印>.jpg」で置く。印（h）は写真の中身から作る（同じ写真なら同じ印）。
+   記録のファイルには、個体ごとに photoRefs = { main: {h, date, kind}, list: [{id, h, date, kind}] }（どの写真があるか）だけを入れる。
+   写真は足し合わせる：どちらかの端末にある写真は、両方に残る。消したときだけ「消した印」（tombstones の s: "photo"、id: 個体のid/写真の印）で消える。
+   代表・日付・印は、あとから直したほうの記録に合わせる。まだ届いていない写真は photoWait に入れておき、届いたら写真に移す。
+   どの個体にも無い写真のファイルは、作ってから1日たったらドライブのごみ箱へ移す（30日は戻せる） */
+const hashMemo = new Map();
+const canHash = () => !!(window.crypto && crypto.subtle);
+async function photoHash(data) {
+  if (!data || !canHash()) return "";
+  if (hashMemo.has(data)) return hashMemo.get(data);
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
+  const h = [...new Uint8Array(buf)].slice(0, 16).map(x => x.toString(16).padStart(2, "0")).join("");
+  hashMemo.set(data, h);
+  return h;
+}
+// 写真に印が無ければ付ける（記録の日時は変えない）
+async function ensurePhotoHashes() {
+  if (!canHash()) return;
+  const write = [];
+  for (const b of state.beetles) {
+    let nb = null;
+    if (b.image && (!b.imageInfo?.h || b.imageInfo.n !== b.image.length)) { nb = { ...b }; nb.imageInfo = { ...(b.imageInfo || {}), h: await photoHash(b.image), n: b.image.length }; }
+    if ((b.photos || []).some(p => p.data && !p.h)) { nb = nb || { ...b }; nb.photos = await Promise.all(b.photos.map(async p => p.data && !p.h ? { ...p, h: await photoHash(p.data) } : p)); }
+    if (nb) write.push(nb);
+  }
+  if (!write.length) return;
+  await store.tx("beetles", "readwrite", s => { write.forEach(x => s.put(x)); });
+  const m = new Map(write.map(x => [x.id, x]));
+  state.beetles = state.beetles.map(x => m.get(x.id) || x);
+}
+// 個体の写真を1つの並びにする（代表・ほかの写真・届いていない写真）
+function photoEntries(b) {
+  const out = [];
+  if (b.image) out.push({ h: b.imageInfo?.n === b.image.length ? b.imageInfo?.h || "" : "", id: "main", date: b.imageInfo?.date || "", kind: b.imageInfo?.kind || "", data: b.image, main: true });
+  (b.photos || []).forEach(p => { if (p.data) out.push({ h: p.h || "", id: p.id, date: p.date || "", kind: p.kind || "", data: p.data, main: false }); });
+  (b.photoWait || []).forEach(w => { if (w.h) out.push({ h: w.h, id: w.id || newId("ph"), date: w.date || "", kind: w.kind || "", data: "", main: !!w.main }); });
+  return out;
+}
+// 記録のファイルに入れる写真の一覧（代表は、届くのを待っている代表を先に）
+function photoRefs(b) {
+  const es = photoEntries(b).filter(e => e.h);
+  if (!es.length) return null;
+  const main = es.find(e => e.main && !e.data) || es.find(e => e.main) || null;
+  return { main: main ? { h: main.h, date: main.date, kind: main.kind } : null, list: es.filter(e => e !== main).map(e => ({ id: e.id, h: e.h, date: e.date, kind: e.kind })) };
+}
+const photoSig = b => photoEntries(b).map(e => [e.h, e.date, e.kind, e.data ? 1 : 0, e.main ? 1 : 0].join("|")).sort().join("\n");
+// 1頭分：この端末の写真と、ドライブの記録にある写真の一覧をまとめる。変わらなければ null
+function mergePhotos(b, refs, remoteNewer, gone) {
+  const local = photoEntries(b);
+  if (local.some(e => !e.h)) return null;
+  const map = new Map();
+  local.forEach(e => { const o = map.get(e.h); if (!o) map.set(e.h, { ...e }); else { if (!o.data && e.data) o.data = e.data; if (e.main) o.main = true; } });
+  const rem = refs ? [...(refs.main ? [{ ...refs.main, main: true }] : []), ...(Array.isArray(refs.list) ? refs.list : []).map(x => ({ ...x, main: false }))] : [];
+  rem.forEach(r => {
+    if (!r || !r.h) return;
+    const o = map.get(r.h);
+    if (!o) map.set(r.h, { h: r.h, id: r.id || newId("ph"), date: r.date || "", kind: r.kind || "", data: "", main: false, rmain: !!r.main });
+    else { o.rmain = !!r.main; if (remoteNewer) { o.date = r.date || ""; o.kind = r.kind || ""; } }
+  });
+  const es = [...map.values()].filter(e => !gone.has(b.id + "/" + e.h));
+  // 代表：ドライブの記録のほうが新しければその代表、そうでなければこの端末の代表
+  const target = (remoteNewer ? es.find(e => e.rmain) : null) || es.find(e => e.main && !e.data) || es.find(e => e.main) || null;
+  const shown = target && target.data ? target : es.find(e => e.main && e.data) || null;
+  const nb = { ...b };
+  if (shown) { nb.image = shown.data; nb.imageInfo = { ...(b.imageInfo || {}), date: shown.date, kind: shown.kind, h: shown.h, n: shown.data.length }; }
+  else { delete nb.image; delete nb.imageInfo; }
+  nb.photos = es.filter(e => e !== shown && e.data).map(e => ({ id: e.id === "main" ? newId("ph") : e.id, date: e.date, kind: e.kind, data: e.data, h: e.h }));
+  const wait = es.filter(e => !e.data).map(e => ({ id: e.id, h: e.h, date: e.date, kind: e.kind, main: e === target }));
+  if (wait.length) nb.photoWait = wait; else delete nb.photoWait;
+  if (!nb.photos.length && !b.photos) delete nb.photos;
+  return photoSig(nb) === photoSig(b) ? null : nb;
+}
+async function mergeAllPhotos(refsById, remoteWon) {
+  if (!canHash()) return 0;
+  const gone = new Set(state.tombs.filter(t => t.s === "photo" && !t.undo).map(t => t.id));
+  const write = [];
+  state.beetles.forEach(b => { const nb = mergePhotos(b, refsById.get(b.id), remoteWon.has(b.id), gone); if (nb) write.push(nb); });
+  if (!write.length) return 0;
+  await store.tx("beetles", "readwrite", s => { write.forEach(x => s.put(x)); });
+  const m = new Map(write.map(x => [x.id, x]));
+  state.beetles = state.beetles.map(x => m.get(x.id) || x);
+  return write.length;
+}
+// 写真を消したときの印（ほかの端末からも消えるように）
+async function addPhotoTomb(beetleId, h) {
+  if (!h) return;
+  const id = beetleId + "/" + h;
+  state.tombs = [...state.tombs.filter(t => !(t.s === "photo" && t.id === id)), { s: "photo", id, at: new Date().toISOString() }];
+  try { await store.tx("settings", "readwrite", s => { s.put({ id: "tombstones", list: state.tombs }); }); } catch {}
+}
+// 同じ写真を足し直したときは、消した印を「取り消し」（undo）に書き換える。
+// 印を外すだけだと、ほかの端末やドライブに残っている印でまた消えるため、新しい日時の取り消しで上書きする
+async function clearPhotoTombs(b) {
+  const live = t => t.s === "photo" && !t.undo && t.id.startsWith(b.id + "/");
+  if (!canHash() || !state.tombs.some(live)) return;
+  const hs = new Set(await Promise.all(allPhotos(b).map(x => photoHash(x.data))));
+  const at = new Date().toISOString();
+  let n = 0;
+  const next = state.tombs.map(t => live(t) && hs.has(t.id.slice(b.id.length + 1)) ? (n++, { s: "photo", id: t.id, at, undo: true }) : t);
+  if (!n) return;
+  state.tombs = next;
+  try { await store.tx("settings", "readwrite", s => { s.put({ id: "tombstones", list: state.tombs }); }); } catch {}
+}
+// 届いた写真を個体に入れる
+async function attachPhoto(id, w, data) {
+  const b = state.beetles.find(x => x.id === id);
+  if (!b || !(b.photoWait || []).some(x => x.h === w.h)) return;
+  const nb = { ...b, photoWait: b.photoWait.filter(x => x.h !== w.h), photos: [...(b.photos || [])] };
+  if (w.main || !nb.image) {
+    if (nb.image) nb.photos.push({ id: newId("ph"), date: b.imageInfo?.date || "", kind: b.imageInfo?.kind || "", data: b.image, h: b.imageInfo?.n === b.image.length ? b.imageInfo?.h : undefined });
+    nb.image = data; nb.imageInfo = { date: w.date || "", kind: w.kind || "", h: w.h, n: data.length };
+  } else nb.photos.push({ id: w.id && w.id !== "main" ? w.id : newId("ph"), date: w.date || "", kind: w.kind || "", data, h: w.h });
+  if (!nb.photoWait.length) delete nb.photoWait;
+  await store.tx("beetles", "readwrite", s => { s.put(nb); });
+  state.beetles = state.beetles.map(x => x.id === id ? nb : x);
+}
+// 送る・受け取る・使っていない写真をごみ箱へ。受け取った枚数を返す
+async function syncPhotos() {
+  const d = drive();
+  if (!d.photoFolder || !canHash()) return { got: 0, fail: 0 };
+  const folder = await d.photoFolder();
+  const files = await d.photoList(folder);
+  const byH = new Map();
+  files.forEach(f => { const h = String(f.name || "").replace(/\.[a-z0-9]+$/i, ""); if (h && !byH.has(h)) byH.set(h, f); });
+  const used = new Set(), up = [], upH = new Set();
+  state.beetles.forEach(b => photoEntries(b).forEach(e => {
+    if (!e.h) return;
+    used.add(e.h);
+    if (e.data && !byH.has(e.h) && !upH.has(e.h)) { up.push(e); upH.add(e.h); }
+  }));
+  const gets = [];
+  state.beetles.forEach(b => (b.photoWait || []).forEach(w => { if (byH.has(w.h)) gets.push([b.id, w]); }));
+  const total = up.length + gets.length;
+  let done = 0, fail = 0, got = 0;
+  const prog = () => { state.sync.photo = `写真を同期しています（${done}/${total}）`; renderSyncInfo(); };
+  for (const e of up) {
+    prog();
+    try { const f = await d.photoUpload(folder, e.h + (/^data:image\/png/.test(e.data) ? ".png" : ".jpg"), e.data); byH.set(e.h, f || {}); }
+    catch (er) { if (er.auth) throw er; fail++; }
+    done++;
+  }
+  for (const [bid, w] of gets) {
+    prog();
+    try { const data = await d.photoRead(byH.get(w.h).id); hashMemo.set(data, w.h); await attachPhoto(bid, w, data); got++; }
+    catch (er) { if (er.auth) throw er; fail++; }
+    done++;
+  }
+  const cut = Date.now() - 86400000;
+  for (const [h, f] of byH) {
+    if (used.has(h) || !f.id || !f.createdTime || new Date(f.createdTime).getTime() >= cut) continue;
+    try { await d.photoTrash(f.id); } catch (er) { if (er.auth) throw er; }
+  }
+  return { got, fail };
+}
 // 画面の上の小さな表示
 // 同期した日時を、この端末の時刻で見せる（記録は世界共通の時刻で持っている）
 const fmtStamp = iso => { const d = new Date(iso); return isNaN(d) ? "" : `${fmtDate(localDate(d))} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -1195,7 +1400,7 @@ function renderSyncInfo() {
   if (el) {
     const last = meta.get("syncLast");
     el.textContent = !syncOn() ? "記録はこの端末のブラウザにだけ保存されます"
-      : state.sync.busy ? "Googleドライブと同期しています…"
+      : state.sync.busy ? state.sync.photo || "Googleドライブと同期しています…"
       : state.sync.error ? state.sync.error
       : `Googleドライブと同期中（${syncAuto() ? "自動" : "手動"}）${last ? " ・ 最後の同期 " + fmtStamp(last) : ""}`;
     el.classList.toggle("sync-warn", !!state.sync.error);
@@ -1208,7 +1413,7 @@ function syncBoxHtml() {
   if (!canSync()) return `<div class="box" id="syncBox"><h3 class="section-title">Googleドライブで同期</h3><p class="hint">いまはパソコンのファイルから開いているので、同期はできません。GitHubに置いたアプリ（https:// で始まるアドレス）で開くと使えます。くわしくは保管庫のノート「スマホ版の準備（GitHubとGoogle）」を見てください。</p></div>`;
   return `<div class="box" id="syncBox">
     <h3 class="section-title">Googleドライブで同期</h3>
-    <p class="hint">PCとスマホで同じ記録を使えます。ドライブの「${syncFile()}」に、写真を抜いた記録を書き出します（写真は撮った端末にだけ残ります）。同じものを両方で直したときは、あとから直したほうが残ります。</p>
+    <p class="hint">PCとスマホで同じ記録を使えます。ドライブの「${syncFile()}」に記録を、フォルダ「${photoFolderName()}」に写真を1枚ずつ書き出します。同じものを両方で直したときは、あとから直したほうが残ります。写真はどちらの端末で足しても両方に届きます（はじめての同期は、写真の枚数が多いと時間がかかります。スマホの電波も使います）。アプリで消した写真は、ドライブのごみ箱へ移ります。</p>
     <div class="fields">
       <label class="wide">クライアントID（Googleで作ったもの）<input type="text" id="syncClientId" value="${esc(syncClientId())}" placeholder="〜.apps.googleusercontent.com"></label>
       <label>この端末の同期<select id="syncMode"><option value="auto"${syncAuto() ? " selected" : ""}>自動（開いたとき・保存したあと）</option><option value="manual"${syncAuto() ? "" : " selected"}>手動（ボタンを押したときだけ）</option></select></label>
@@ -3329,12 +3534,14 @@ function photoBox(b) {
       </figcaption>
     </figure>`).join("")}</div>
     <div id="phLarge"></div>` : '<p class="hint">幼虫・蛹・羽化・後食・計測など、日付つきで何枚でも残せます。いちばん良い写真を「代表」にすると、一覧や個体の画面に出ます。</p>'}
+    ${(b.photoWait || []).length ? `<p class="hint">ほかの端末の写真が ${b.photoWait.length}枚 まだ届いていません（同期すると届きます）。</p>` : ""}
   </div>`;
 }
 // 写真の追加・変更は、その場で保存する
 async function savePhotos(id, fn, msg) {
   const b = structuredClone(state.beetles.find(x => x.id === id));
   fn(b);
+  await clearPhotoTombs(b);
   if (await save(b)) toast(msg);
 }
 
@@ -4496,7 +4703,9 @@ document.addEventListener("click", e => {
   if (t.dataset.phdel) {
     if (!confirm("この写真を消しますか？（元に戻せません）")) return;
     const pid = t.dataset.phdel;
-    return savePhotos(state.openId, b => {
+    // 同期している端末からも消えるように、消した印を残す
+    const b0 = state.beetles.find(x => x.id === state.openId), x0 = b0 && allPhotos(b0).find(p => p.id === pid);
+    return (x0 ? photoHash(x0.data).then(h => addPhotoTomb(b0.id, h)) : Promise.resolve()).then(() => savePhotos(state.openId, b => {
       if (pid === "main") {
         // 代表を消したら、いちばん新しい写真を代表にする
         const rest = (b.photos || []).slice().sort((a, c) => (c.date || "").localeCompare(a.date || ""));
@@ -4504,7 +4713,7 @@ document.addEventListener("click", e => {
         if (n) { b.image = n.data; b.imageInfo = { date: n.date || "", kind: n.kind || "" }; b.photos = b.photos.filter(p => p.id !== n.id); }
         else { delete b.image; delete b.imageInfo; }
       } else b.photos = (b.photos || []).filter(p => p.id !== pid);
-    }, "写真を消しました");
+    }, "写真を消しました"));
   }
   if (t.hasAttribute("data-clearlogo")) {
     if (!confirm("ロゴ画像を外しますか？（印刷物には文字だけが出ます）")) return;
