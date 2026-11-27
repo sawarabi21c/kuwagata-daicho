@@ -4882,12 +4882,21 @@ document.addEventListener("click", e => {
       <div class="row"><button class="btn small" type="button" data-cancel-del>やめる</button><button class="btn small danger solid" type="button" ${isPair ? "data-confirm-delpair" : "data-confirm-del"}>削除する</button></div></div>`;
     return;
   }
-  if (t.hasAttribute("data-lock")) {
+  // 保護を外すときの確認は、ブラウザの確認（confirm）ではなく画面の中に出す。
+  // iPhoneのSafariで確認の画面が出ず、何も起きなかったため（2026-11-27 あっきーさん）
+  if (t.hasAttribute("data-unlock-no")) { $("lockAsk")?.remove(); return; }
+  if (t.hasAttribute("data-lock") || t.hasAttribute("data-unlock-yes")) {
     const b = structuredClone(state.beetles.find(x => x.id === state.openId));
     if (b.locked) {
-      if (!confirm(`${nameOf(b)} の保護を外しますか？\n外すと、削除できるようになります。`)) return;
+      if (!t.hasAttribute("data-unlock-yes")) {
+        if ($("lockAsk")) return;
+        t.parentElement.insertAdjacentHTML("afterend", `<div class="confirm" id="lockAsk"><span><strong>${esc(nameOf(b))}</strong> の保護を外しますか？外すと、削除できるようになります。</span>
+          <div class="row"><button class="btn small" type="button" data-unlock-no>やめる</button><button class="btn small danger solid" type="button" data-unlock-yes>保護を外す</button></div></div>`);
+        return;
+      }
       delete b.locked;
-    } else b.locked = true;
+    } else if (t.hasAttribute("data-unlock-yes")) { $("lockAsk")?.remove(); return; }
+    else b.locked = true;
     save(b).then(ok => ok && toast(b.locked ? "保護しました（削除できなくなります）" : "保護を外しました"));
     return;
   }
